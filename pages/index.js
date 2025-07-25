@@ -1,14 +1,14 @@
 // pages/index.js
 import React, { useState } from 'react';
 import Head from 'next/head';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '../lib/useAuth';
 import BuildCreator from '../components/BuildCreator';
 import ResultsDisplay from '../components/ResultsDisplay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AuthButton from '../components/AuthButton';
 
 export default function Home() {
-  const { data: session } = useSession();
+  const { session } = useAuth();
   const [searchResults, setSearchResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
