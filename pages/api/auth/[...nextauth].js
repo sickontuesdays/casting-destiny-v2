@@ -14,6 +14,7 @@ export default NextAuth({
         params: {
           client_id: process.env.BUNGIE_CLIENT_ID,
           response_type: 'code',
+          scope: undefined, // Bungie doesn't want scope parameter
         },
       },
       token: {
