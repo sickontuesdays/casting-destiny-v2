@@ -1,7 +1,9 @@
-import { getSession } from 'next-auth/react';
+import { jwtVerify } from 'jose';
 import { getAllUserItems } from '../../../lib/bungie-inventory';
 import { getManifestComponent } from '../../../lib/bungie-api';
 import { parseAdvancedSearch, processAdvancedKeywords, findAdvancedSynergisticItems } from '../../../lib/advanced-search-parser';
+
+const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -9,12 +11,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const session = await getSession({ req });
+    // Get session from cookie
+    const sessionCookie = req.cookies['bungie-session'];
     
-    if (!session) {
+    if (!sessionCookie) {
       return res.status(401).json({ 
         success: false, 
         error: 'Authentication required' 
+      });
+    }
+
+    let session;
+    try {
+      const { payload } = await jwtVerify(sessionCookie, secret);
+      session = payload;
+    } catch (error) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid session' 
       });
     }
 
