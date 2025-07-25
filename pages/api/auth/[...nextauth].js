@@ -9,14 +9,7 @@ export default NextAuth({
       id: 'bungie',
       name: 'Bungie',
       type: 'oauth',
-      authorization: {
-        url: BUNGIE_AUTHORIZATION_URL,
-        params: {
-          client_id: process.env.BUNGIE_CLIENT_ID,
-          response_type: 'code',
-          scope: undefined, // Bungie doesn't want scope parameter
-        },
-      },
+      authorization: `${BUNGIE_AUTHORIZATION_URL}?client_id=${process.env.BUNGIE_CLIENT_ID}&response_type=code`,
       token: {
         url: BUNGIE_TOKEN_URL,
         async request({ client, params, checks, provider }) {
