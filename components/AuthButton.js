@@ -1,9 +1,9 @@
-import { useSession, signIn, signOut } from 'next-auth/react';
+import { useAuth } from '../lib/useAuth';
 
 const AuthButton = () => {
-  const { data: session, status } = useSession();
+  const { session, loading, signIn, signOut } = useAuth();
 
-  if (status === 'loading') return <p>Loading...</p>;
+  if (loading) return <p>Loading...</p>;
 
   if (session) {
     return (
@@ -34,7 +34,7 @@ const AuthButton = () => {
           </div>
         </div>
         <button
-          onClick={() => signOut()}
+          onClick={signOut}
           style={{
             background: 'rgba(255, 0, 0, 0.2)',
             border: '1px solid rgba(255, 0, 0, 0.3)',
@@ -52,7 +52,7 @@ const AuthButton = () => {
 
   return (
     <button
-      onClick={() => signIn('bungie')}
+      onClick={signIn}
       style={{
         background: 'linear-gradient(45deg, #f4a724, #ff8c00)',
         color: '#000',
