@@ -79,7 +79,16 @@ export default NextAuth({
       return session;
     },
   },
-  pages: {
-    signIn: '/auth/signin',
+  // Remove the custom signIn page since it doesn't exist
+  // pages: {
+  //   signIn: '/auth/signin',
+  // },
+  
+  // Add these to ensure proper handling
+  session: {
+    strategy: 'jwt',
   },
+  
+  // Add debug mode for development
+  debug: process.env.NODE_ENV === 'development',
 });
