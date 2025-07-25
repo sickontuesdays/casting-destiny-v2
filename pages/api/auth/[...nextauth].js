@@ -19,6 +19,8 @@ export default NextAuth({
       token: {
         url: BUNGIE_TOKEN_URL,
         async request({ client, params, checks, provider }) {
+          console.log('Token request params:', params);
+          
           const response = await fetch(BUNGIE_TOKEN_URL, {
             method: 'POST',
             headers: {
@@ -33,11 +35,20 @@ export default NextAuth({
             }),
           });
           
-          return await response.json();
+          const tokens = await response.json();
+          console.log('Token response:', tokens);
+          
+          if (!response.ok) {
+            throw new Error(`Token exchange failed: ${JSON.stringify(tokens)}`);
+          }
+          
+          return tokens;
         },
       },
       userinfo: {
         async request({ tokens }) {
+          console.log('Fetching user info with token:', tokens.access_token?.substring(0, 10) + '...');
+          
           const response = await fetch('https://www.bungie.net/Platform/User/GetMembershipsForCurrentUser/', {
             headers: {
               'Authorization': `Bearer ${tokens.access_token}`,
@@ -46,10 +57,17 @@ export default NextAuth({
           });
           
           const data = await response.json();
+          console.log('User info response:', data);
+          
+          if (!response.ok || !data.Response) {
+            throw new Error(`Failed to fetch user info: ${JSON.stringify(data)}`);
+          }
+          
           return data.Response;
         },
       },
       profile(profile) {
+        console.log('Processing profile:', profile);
         return {
           id: profile.bungieNetUser.membershipId,
           name: profile.bungieNetUser.displayName,
@@ -63,8 +81,9 @@ export default NextAuth({
     },
   ],
   callbacks: {
-    async jwt({ token, account, profile }) {
+    async jwt({ token, account, profile, user }) {
       if (account) {
+        console.log('JWT callback - account:', account);
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.bungieNetUser = profile?.bungieNetUser;
@@ -78,17 +97,24 @@ export default NextAuth({
       session.user.destinyMemberships = token.destinyMemberships;
       return session;
     },
+    async signIn({ user, account, profile, email, credentials }) {
+      console.log('SignIn callback:', { user, account, profile });
+      return true;
+    },
   },
-  // Remove the custom signIn page since it doesn't exist
-  // pages: {
-  //   signIn: '/auth/signin',
-  // },
-  
-  // Add these to ensure proper handling
   session: {
     strategy: 'jwt',
   },
-  
-  // Add debug mode for development
-  debug: process.env.NODE_ENV === 'development',
+  debug: true,
+  logger: {
+    error(code, metadata) {
+      console.error('NextAuth Error:', code, metadata);
+    },
+    warn(code) {
+      console.warn('NextAuth Warning:', code);
+    },
+    debug(code, metadata) {
+      console.log('NextAuth Debug:', code, metadata);
+    },
+  },
 });
