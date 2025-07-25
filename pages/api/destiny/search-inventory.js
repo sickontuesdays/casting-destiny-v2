@@ -1,7 +1,7 @@
 import { getSession } from 'next-auth/react';
 import { getAllUserItems } from '../../../lib/bungie-inventory';
 import { getManifestComponent } from '../../../lib/bungie-api';
-import { parseAdvancedSearch, processAdvancedKeywords } from '../../../lib/advanced-search-parser';
+import { parseAdvancedSearch, processAdvancedKeywords, findAdvancedSynergisticItems } from '../../../lib/advanced-search-parser';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
