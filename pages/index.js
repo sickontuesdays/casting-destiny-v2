@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import Head from 'next/head';
 import { useAuth } from '../lib/useAuth';
 import BuildCreator from '../components/BuildCreator';
-import BuildDisplay from '../components/BuildDisplay'; // NEW: Import BuildDisplay
+import BuildDisplay from '../components/BuildDisplay';
+import MissingItemsDisplay from '../components/MissingItemsDisplay'; // NEW: Import MissingItemsDisplay
 import ResultsDisplay from '../components/ResultsDisplay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AuthButton from '../components/AuthButton';
@@ -271,13 +272,17 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* NEW: Display builds or items based on search type */}
+              {/* NEW: Display builds, missing items analysis, or regular items based on search type */}
               {searchResults.searchType === 'builds' ? (
                 <BuildDisplay 
                   builds={searchResults.builds}
                   searchQuery={searchResults.query}
                   totalFound={searchResults.totalFound}
                 />
+              ) : searchResults.searchType === 'missing_items' || 
+                  searchResults.searchType === 'partial_items' || 
+                  searchResults.searchType === 'no_items' ? (
+                <MissingItemsDisplay searchResults={searchResults} />
               ) : (
                 <ResultsDisplay 
                   results={searchResults.results}
