@@ -42,6 +42,13 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error in fetch-all-data API:', error);
     
+    // ENHANCED: Log more details about the error for debugging
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
     // If we have cached data and there's an error, return cached data as fallback
     if (cachedData) {
       console.log('API error, returning cached data as fallback');
@@ -50,14 +57,16 @@ export default async function handler(req, res) {
         data: cachedData,
         cached: true,
         fallback: true,
-        error: 'Fresh data unavailable, using cached data'
+        error: 'Fresh data unavailable, using cached data',
+        originalError: error.message // ENHANCED: Include original error message
       });
     }
     
     return res.status(500).json({
       success: false,
       error: 'Failed to fetch Destiny data',
-      details: error.message
+      details: error.message,
+      suggestion: 'This may be due to Bungie API changes or temporary service issues. Please try again later.' // ENHANCED: Helpful suggestion
     });
   }
 }
