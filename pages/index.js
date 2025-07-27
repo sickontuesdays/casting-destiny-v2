@@ -1,8 +1,8 @@
-// pages/index.js
 import React, { useState } from 'react';
 import Head from 'next/head';
 import { useAuth } from '../lib/useAuth';
 import BuildCreator from '../components/BuildCreator';
+import BuildDisplay from '../components/BuildDisplay'; // NEW: Import BuildDisplay
 import ResultsDisplay from '../components/ResultsDisplay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AuthButton from '../components/AuthButton';
@@ -20,7 +20,7 @@ export default function Home() {
     setError(null);
     
     try {
-      let endpoint = '/api/destiny/search';
+      let endpoint = '/api/destiny/search'; // This now has build intelligence
       let requestBody = { keywords };
 
       // If user is logged in and wants inventory-only search
@@ -73,7 +73,7 @@ export default function Home() {
     <>
       <Head>
         <title>Casting Destiny</title>
-        <meta name="description" content="Cast your perfect Destiny 2 build based on your playstyle - discover synergistic components that work together" />
+        <meta name="description" content="Cast your perfect Destiny 2 build based on your playstyle - discover complete builds that work together" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
@@ -101,7 +101,7 @@ export default function Home() {
               color: '#b3b3b3',
               fontSize: '1.1rem'
             }}>
-              Cast your perfect Guardian build by describing your playstyle - discover the components that create perfect synergy
+              Describe your playstyle and get complete builds that synergize perfectly together
             </p>
           </div>
 
@@ -216,7 +216,7 @@ export default function Home() {
                 {useInventoryOnly ? (
                   <span>🎯 Searching your inventory only - results will be builds you can make right now!</span>
                 ) : (
-                  <span>🌍 Searching all Destiny items - results may include gear you don't own</span>
+                  <span>🌍 Searching all Destiny items - results will show optimal builds regardless of ownership</span>
                 )}
               </div>
             </div>
@@ -254,7 +254,7 @@ export default function Home() {
                 border: '1px solid rgba(244, 167, 36, 0.1)'
               }}>
                 <div style={{ color: '#b3b3b3', fontSize: '0.9rem' }}>
-                  Found {searchResults.totalFound} matches
+                  {searchResults.message || `Found ${searchResults.totalFound} results`}
                   {searchResults.inventorySize && (
                     <span> from your {searchResults.inventorySize} owned items</span>
                   )}
@@ -271,11 +271,20 @@ export default function Home() {
                 </div>
               </div>
 
-              <ResultsDisplay 
-                results={searchResults.results}
-                totalFound={searchResults.totalFound}
-                processedKeywords={searchResults.processedKeywords}
-              />
+              {/* NEW: Display builds or items based on search type */}
+              {searchResults.searchType === 'builds' ? (
+                <BuildDisplay 
+                  builds={searchResults.builds}
+                  searchQuery={searchResults.query}
+                  totalFound={searchResults.totalFound}
+                />
+              ) : (
+                <ResultsDisplay 
+                  results={searchResults.results}
+                  totalFound={searchResults.totalFound}
+                  processedKeywords={searchResults.processedKeywords}
+                />
+              )}
             </>
           )}
         </div>
