@@ -170,141 +170,394 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
               borderTop: '1px solid rgba(244, 167, 36, 0.2)',
               paddingTop: '20px'
             }}>
-              {/* Build Components from Real Destiny Data */}
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ color: '#f4a724', marginBottom: '15px', fontSize: '1rem' }}>
-                  🔥 Build Components ({build.itemCount} synergistic items)
-                </h4>
-                
-                {/* Exotic Armor */}
-                {build.components.exoticArmor.length > 0 && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#FFD700', fontSize: '0.9rem' }}>🛡️ Exotic Armor:</strong>
-                    <div style={{ marginTop: '8px' }}>
-                      {build.components.exoticArmor.map((item, i) => (
-                        <div key={i} style={{
-                          background: 'rgba(255, 215, 0, 0.1)',
-                          border: '1px solid rgba(255, 215, 0, 0.3)',
-                          borderRadius: '8px',
-                          padding: '10px',
-                          marginBottom: '8px'
-                        }}>
-                          <div style={{ color: '#FFD700', fontWeight: 'bold' }}>{item.name}</div>
-                          <div style={{ color: '#b3b3b3', fontSize: '0.85rem', marginTop: '4px' }}>
-                            {item.description}
-                          </div>
+              {/* Complete Build Guide */}
+              {build.buildGuide && (
+                <div style={{ marginBottom: '25px' }}>
+                  <h4 style={{ color: '#f4a724', marginBottom: '20px', fontSize: '1.2rem' }}>
+                    📋 Complete Build Loadout
+                  </h4>
+
+                  {/* Subclass Setup */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#DA70D6', marginBottom: '10px', fontSize: '1rem' }}>
+                      🔮 Subclass Configuration
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(138, 43, 226, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(138, 43, 226, 0.2)'
+                    }}>
+                      <div style={{ marginBottom: '10px' }}>
+                        <strong style={{ color: '#DA70D6' }}>Super:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.subclass.super}</span>
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <strong style={{ color: '#DA70D6' }}>Class Ability:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.subclass.abilities.class}</span>
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <strong style={{ color: '#DA70D6' }}>Movement:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.subclass.abilities.movement}</span>
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <strong style={{ color: '#DA70D6' }}>Melee:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.subclass.abilities.melee}</span>
+                      </div>
+                      
+                      {/* Aspects */}
+                      <div style={{ marginTop: '15px' }}>
+                        <strong style={{ color: '#DA70D6' }}>Aspects:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                          {build.buildGuide.subclass.aspects.map((aspect, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(138, 43, 226, 0.3)',
+                              color: '#DA70D6',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {aspect}
+                            </span>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+
+                      {/* Fragments */}
+                      <div style={{ marginTop: '15px' }}>
+                        <strong style={{ color: '#DA70D6' }}>Fragments:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                          {build.buildGuide.subclass.fragments.map((fragment, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(100, 149, 237, 0.2)',
+                              color: '#6495ED',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {fragment}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                )}
 
-                {/* Exotic Weapons */}
-                {build.components.exoticWeapons.length > 0 && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#FFD700', fontSize: '0.9rem' }}>⚔️ Exotic Weapons:</strong>
-                    <div style={{ marginTop: '8px' }}>
-                      {build.components.exoticWeapons.map((item, i) => (
-                        <div key={i} style={{
-                          background: 'rgba(255, 215, 0, 0.1)',
-                          border: '1px solid rgba(255, 215, 0, 0.3)',
-                          borderRadius: '8px',
-                          padding: '10px',
-                          marginBottom: '8px'
-                        }}>
-                          <div style={{ color: '#FFD700', fontWeight: 'bold' }}>{item.name}</div>
-                          <div style={{ color: '#b3b3b3', fontSize: '0.85rem', marginTop: '4px' }}>
-                            {item.description}
-                          </div>
+                  {/* Weapons */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#FFD700', marginBottom: '10px', fontSize: '1rem' }}>
+                      ⚔️ Weapon Loadout
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(255, 215, 0, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(255, 215, 0, 0.2)'
+                    }}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#FFD700' }}>Kinetic:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.weapons.kinetic}</span>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#FFD700' }}>Energy:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.weapons.energy}</span>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#FFD700' }}>Heavy:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.weapons.heavy}</span>
+                      </div>
+                      <div style={{ marginBottom: '15px' }}>
+                        <strong style={{ color: '#FFD700' }}>🔥 Exotic:</strong>
+                        <span style={{ color: '#FFD700', marginLeft: '10px', fontWeight: 'bold' }}>{build.buildGuide.weapons.exotic}</span>
+                      </div>
+                      
+                      <div>
+                        <strong style={{ color: '#FFD700' }}>Weapon Mods:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                          {build.buildGuide.weapons.weaponMods.map((mod, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(255, 215, 0, 0.2)',
+                              color: '#FFD700',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {mod}
+                            </span>
+                          ))}
                         </div>
-                      ))}
+                      </div>
                     </div>
                   </div>
-                )}
 
-                {/* Mods */}
-                {build.components.mods.length > 0 && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#4CAF50', fontSize: '0.9rem' }}>🛠️ Essential Mods:</strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                      {build.components.mods.slice(0, 6).map((item, i) => (
-                        <span key={i} style={{
-                          background: 'rgba(76, 175, 80, 0.2)',
-                          color: '#4CAF50',
-                          padding: '6px 12px',
-                          borderRadius: '12px',
-                          fontSize: '0.85rem',
-                          border: '1px solid rgba(76, 175, 80, 0.3)'
-                        }}>
-                          {item.name}
-                        </span>
-                      ))}
-                      {build.components.mods.length > 6 && (
-                        <span style={{
-                          color: '#b3b3b3',
-                          fontSize: '0.85rem',
-                          fontStyle: 'italic'
-                        }}>
-                          +{build.components.mods.length - 6} more
-                        </span>
+                  {/* Armor */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#2196F3', marginBottom: '10px', fontSize: '1rem' }}>
+                      🛡️ Armor Setup
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(33, 150, 243, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(33, 150, 243, 0.2)'
+                    }}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#2196F3' }}>Helmet:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.armor.helmet}</span>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#2196F3' }}>Arms:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.armor.arms}</span>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#2196F3' }}>Chest:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.armor.chest}</span>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#2196F3' }}>Legs:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.armor.legs}</span>
+                      </div>
+                      <div style={{ marginBottom: '15px' }}>
+                        <strong style={{ color: '#2196F3' }}>Class Item:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.armor.classItem}</span>
+                      </div>
+                      <div>
+                        <strong style={{ color: '#2196F3' }}>🔥 Exotic Armor:</strong>
+                        <span style={{ color: '#FFD700', marginLeft: '10px', fontWeight: 'bold' }}>{build.buildGuide.armor.exotic}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Armor Mods */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#4CAF50', marginBottom: '10px', fontSize: '1rem' }}>
+                      🛠️ Armor Mod Placement
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(76, 175, 80, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(76, 175, 80, 0.2)'
+                    }}>
+                      {/* Helmet Mods */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong style={{ color: '#4CAF50' }}>Helmet Mods:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                          {build.buildGuide.mods.helmet.map((mod, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(76, 175, 80, 0.2)',
+                              color: '#4CAF50',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {mod}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Arms Mods */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong style={{ color: '#4CAF50' }}>Arms Mods:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                          {build.buildGuide.mods.arms.map((mod, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(76, 175, 80, 0.2)',
+                              color: '#4CAF50',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {mod}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Chest Mods */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong style={{ color: '#4CAF50' }}>Chest Mods:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                          {build.buildGuide.mods.chest.map((mod, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(76, 175, 80, 0.2)',
+                              color: '#4CAF50',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {mod}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Legs Mods */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong style={{ color: '#4CAF50' }}>Legs Mods:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                          {build.buildGuide.mods.legs.map((mod, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(76, 175, 80, 0.2)',
+                              color: '#4CAF50',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {mod}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Class Item Mods */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong style={{ color: '#4CAF50' }}>Class Item Mods:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                          {build.buildGuide.mods.classItem.map((mod, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(76, 175, 80, 0.2)',
+                              color: '#4CAF50',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.8rem'
+                            }}>
+                              {mod}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Combat Mods */}
+                      {build.buildGuide.mods.combat && build.buildGuide.mods.combat.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <strong style={{ color: '#4CAF50' }}>Combat Mods:</strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                            {build.buildGuide.mods.combat.map((mod, i) => (
+                              <span key={i} style={{
+                                background: 'rgba(255, 87, 34, 0.2)',
+                                color: '#FF5722',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '0.8rem'
+                              }}>
+                                {mod}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Seasonal Artifact Mods */}
+                      {build.buildGuide.mods.seasonal && build.buildGuide.mods.seasonal.length > 0 && (
+                        <div>
+                          <strong style={{ color: '#4CAF50' }}>Seasonal Artifact Mods:</strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                            {build.buildGuide.mods.seasonal.map((mod, i) => (
+                              <span key={i} style={{
+                                background: 'rgba(156, 39, 176, 0.2)',
+                                color: '#9C27B0',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '0.8rem'
+                              }}>
+                                {mod}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
-                )}
 
-                {/* Legendary Weapons */}
-                {build.components.legendaryWeapons.length > 0 && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#9C27B0', fontSize: '0.9rem' }}>🔫 Recommended Weapons:</strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                      {build.components.legendaryWeapons.slice(0, 4).map((item, i) => (
-                        <span key={i} style={{
-                          background: 'rgba(156, 39, 176, 0.2)',
-                          color: '#9C27B0',
-                          padding: '6px 12px',
-                          borderRadius: '12px',
-                          fontSize: '0.85rem',
-                          border: '1px solid rgba(156, 39, 176, 0.3)'
-                        }}>
-                          {item.name}
-                        </span>
-                      ))}
-                      {build.components.legendaryWeapons.length > 4 && (
-                        <span style={{
-                          color: '#b3b3b3',
-                          fontSize: '0.85rem',
-                          fontStyle: 'italic'
-                        }}>
-                          +{build.components.legendaryWeapons.length - 4} more
-                        </span>
-                      )}
+                  {/* Stats */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#FF9800', marginBottom: '10px', fontSize: '1rem' }}>
+                      📊 Stat Priorities
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(255, 152, 0, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(255, 152, 0, 0.2)'
+                    }}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#FF9800' }}>Primary:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.stats.primary}</span>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#FF9800' }}>Secondary:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.stats.secondary}</span>
+                      </div>
+                      <div>
+                        <strong style={{ color: '#FF9800' }}>Tertiary:</strong>
+                        <span style={{ color: '#e6e6e6', marginLeft: '10px' }}>{build.buildGuide.stats.tertiary}</span>
+                      </div>
                     </div>
                   </div>
-                )}
 
-                {/* Aspects & Fragments */}
-                {(build.components.aspects.length > 0 || build.components.fragments.length > 0) && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#DA70D6', fontSize: '0.9rem' }}>🔮 Subclass Components:</strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                      {[...build.components.aspects, ...build.components.fragments].map((item, i) => (
-                        <span key={i} style={{
-                          background: 'rgba(138, 43, 226, 0.2)',
-                          color: '#DA70D6',
-                          padding: '6px 12px',
-                          borderRadius: '12px',
-                          fontSize: '0.85rem',
-                          border: '1px solid rgba(138, 43, 226, 0.3)'
-                        }}>
-                          {item.name}
-                        </span>
-                      ))}
+                  {/* Gameplay Guide */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#E91E63', marginBottom: '10px', fontSize: '1rem' }}>
+                      🎮 Gameplay Rotation
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(233, 30, 99, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(233, 30, 99, 0.2)'
+                    }}>
+                      <ol style={{
+                        margin: '0',
+                        paddingLeft: '20px',
+                        color: '#e6e6e6'
+                      }}>
+                        {build.buildGuide.gameplay.rotation.map((step, i) => (
+                          <li key={i} style={{
+                            marginBottom: '8px',
+                            fontSize: '0.9rem',
+                            lineHeight: '1.4'
+                          }}>
+                            {step}
+                          </li>
+                        ))}
+                      </ol>
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Playstyle Info */}
+                  {/* Pro Tips */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ color: '#00BCD4', marginBottom: '10px', fontSize: '1rem' }}>
+                      💡 Pro Tips
+                    </h5>
+                    <div style={{ 
+                      background: 'rgba(0, 188, 212, 0.1)', 
+                      borderRadius: '10px', 
+                      padding: '15px',
+                      border: '1px solid rgba(0, 188, 212, 0.2)'
+                    }}>
+                      <ul style={{
+                        margin: '0',
+                        paddingLeft: '20px',
+                        color: '#e6e6e6'
+                      }}>
+                        {build.buildGuide.gameplay.tips.map((tip, i) => (
+                          <li key={i} style={{
+                            marginBottom: '8px',
+                            fontSize: '0.9rem',
+                            lineHeight: '1.4'
+                          }}>
+                            {tip}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Original Playstyle Info */}
               {build.playstyle && (
                 <div style={{ marginBottom: '20px' }}>
                   <div style={{
@@ -426,13 +679,18 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
                   e.target.style.borderColor = 'rgba(244, 167, 36, 0.3)';
                 }}
                 onClick={() => {
-                  // Future: Share build functionality
-                  const shareText = `Check out this ${build.name} build for Destiny 2: ${build.description}`;
+                  // Create detailed build text for sharing
+                  const buildText = `${build.name} - Destiny 2 Build Guide\n\n` +
+                    `Super: ${build.buildGuide.subclass.super}\n` +
+                    `Exotic: ${build.buildGuide.armor.exotic}\n` +
+                    `Focus: ${build.focus} build with ${build.synergyScore}% synergy match\n\n` +
+                    `Complete guide: ${window.location.href}`;
+                  
                   if (navigator.share) {
-                    navigator.share({ text: shareText });
+                    navigator.share({ text: buildText });
                   } else {
-                    navigator.clipboard.writeText(shareText);
-                    alert('Build description copied to clipboard!');
+                    navigator.clipboard.writeText(buildText);
+                    alert('Complete build guide copied to clipboard!');
                   }
                 }}
                 >
@@ -455,7 +713,7 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
         background: 'rgba(0, 0, 0, 0.2)',
         borderRadius: '10px'
       }}>
-        💡 Tip: Click on any build to see detailed setup instructions and synergy explanations
+        💡 Tip: Click on any build to see complete loadout details, mod placements, and gameplay rotation
       </div>
     </div>
   );
