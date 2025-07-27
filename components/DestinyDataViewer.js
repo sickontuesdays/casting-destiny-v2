@@ -129,37 +129,80 @@ const DestinyDataViewer = () => {
               {getClassIcon(className)} {className}
             </h2>
 
-            {/* Supers */}
-            <DataSection 
-              title="Supers" 
-              items={classData.supers} 
-              color="#DA70D6"
-              showDamageType={true}
-            />
+            {/* Subclasses */}
+            {Object.entries(classData).map(([damageType, subclassData]) => (
+              <div key={damageType} style={{
+                marginBottom: '25px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                padding: '15px'
+              }}>
+                <h3 style={{
+                  color: getDamageTypeColor(damageType),
+                  marginBottom: '15px',
+                  fontSize: '1.2rem',
+                  textAlign: 'center'
+                }}>
+                  {getDamageTypeIcon(damageType)} {damageType}
+                </h3>
 
-            {/* Aspects */}
-            <DataSection 
-              title="Aspects" 
-              items={classData.aspects} 
-              color="#9C27B0"
-              showDamageType={true}
-            />
+                {/* Supers */}
+                <SubclassDataSection 
+                  title="Supers" 
+                  items={subclassData.supers} 
+                  color="#DA70D6"
+                  maxHeight="100px"
+                />
 
-            {/* Fragments */}
-            <DataSection 
-              title="Fragments" 
-              items={classData.fragments.slice(0, 5)} 
-              color="#6495ED"
-              showDamageType={true}
-            />
+                {/* Aspects */}
+                <SubclassDataSection 
+                  title="Aspects" 
+                  items={subclassData.aspects} 
+                  color="#9C27B0"
+                  maxHeight="80px"
+                />
 
-            {/* Abilities */}
-            <DataSection 
-              title="Abilities" 
-              items={classData.abilities.slice(0, 8)} 
-              color="#4CAF50"
-              showType={true}
-            />
+                {/* Fragments */}
+                <SubclassDataSection 
+                  title="Fragments" 
+                  items={subclassData.fragments} 
+                  color="#6495ED"
+                  maxHeight="80px"
+                />
+
+                {/* Grenades */}
+                <SubclassDataSection 
+                  title="Grenades" 
+                  items={subclassData.grenades} 
+                  color="#FF5722"
+                  maxHeight="80px"
+                />
+
+                {/* Melees */}
+                <SubclassDataSection 
+                  title="Melees" 
+                  items={subclassData.melees} 
+                  color="#FF9800"
+                  maxHeight="80px"
+                />
+
+                {/* Class Abilities */}
+                <SubclassDataSection 
+                  title="Class Abilities" 
+                  items={subclassData.classAbilities} 
+                  color="#4CAF50"
+                  maxHeight="60px"
+                />
+
+                {/* Movement */}
+                <SubclassDataSection 
+                  title="Movement" 
+                  items={subclassData.movement} 
+                  color="#2196F3"
+                  maxHeight="60px"
+                />
+              </div>
+            ))}
           </div>
         ))}
       </div>
