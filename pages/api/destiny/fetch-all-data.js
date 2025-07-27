@@ -1,4 +1,4 @@
-import { fetchAllDestinyData } from '../../lib/bungie-data-fetcher';
+import { fetchAllDestinyData } from '../../../lib/bungie-data-fetcher';
 
 let cachedData = null;
 let cacheTimestamp = null;
