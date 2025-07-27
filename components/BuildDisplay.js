@@ -126,7 +126,7 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
             gap: '10px',
             marginBottom: expandedBuild === index ? '20px' : '0'
           }}>
-            {build.components.exoticArmor && (
+            {build.components.exoticArmor && build.components.exoticArmor.length > 0 && (
               <div style={{
                 background: 'rgba(255, 215, 0, 0.2)',
                 color: '#FFD700',
@@ -135,11 +135,11 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
                 fontSize: '0.85rem',
                 border: '1px solid rgba(255, 215, 0, 0.3)'
               }}>
-                🔥 {build.components.exoticArmor}
+                🔥 {build.components.exoticArmor[0].name}
               </div>
             )}
             
-            {build.components.exoticWeapon && (
+            {build.components.exoticWeapons && build.components.exoticWeapons.length > 0 && (
               <div style={{
                 background: 'rgba(255, 215, 0, 0.2)',
                 color: '#FFD700',
@@ -148,22 +148,20 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
                 fontSize: '0.85rem',
                 border: '1px solid rgba(255, 215, 0, 0.3)'
               }}>
-                ⚔️ {build.components.exoticWeapon}
+                ⚔️ {build.components.exoticWeapons[0].name}
               </div>
             )}
 
-            {build.components.subclass && (
-              <div style={{
-                background: 'rgba(138, 43, 226, 0.2)',
-                color: '#DA70D6',
-                padding: '5px 12px',
-                borderRadius: '15px',
-                fontSize: '0.85rem',
-                border: '1px solid rgba(138, 43, 226, 0.3)'
-              }}>
-                ⚡ {build.components.subclass.subclass.charAt(0).toUpperCase() + build.components.subclass.subclass.slice(1)} {build.components.subclass.class.charAt(0).toUpperCase() + build.components.subclass.class.slice(1)}
-              </div>
-            )}
+            <div style={{
+              background: 'rgba(138, 43, 226, 0.2)',
+              color: '#DA70D6',
+              padding: '5px 12px',
+              borderRadius: '15px',
+              fontSize: '0.85rem',
+              border: '1px solid rgba(138, 43, 226, 0.3)'
+            }}>
+              ⚡ {build.focus.charAt(0).toUpperCase() + build.focus.slice(1)} Focus
+            </div>
           </div>
 
           {/* Expanded Details */}
@@ -305,35 +303,6 @@ const BuildDisplay = ({ builds, searchQuery, totalFound }) => {
                   </div>
                 )}
               </div>
-
-              {/* Stats Priority */}
-              {build.components.stats && Object.keys(build.components.stats).length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4 style={{ color: '#f4a724', marginBottom: '10px', fontSize: '1rem' }}>
-                    📊 Stat Priorities
-                  </h4>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                    {Object.entries(build.components.stats).map(([stat, value]) => (
-                      <div key={stat} style={{
-                        background: 'rgba(33, 150, 243, 0.2)',
-                        border: '1px solid rgba(33, 150, 243, 0.3)',
-                        borderRadius: '10px',
-                        padding: '8px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                      }}>
-                        <span style={{ color: '#2196F3', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                          {stat.charAt(0).toUpperCase() + stat.slice(1)}:
-                        </span>
-                        <span style={{ color: '#e6e6e6', fontSize: '0.9rem' }}>
-                          {value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Playstyle Info */}
               {build.playstyle && (
