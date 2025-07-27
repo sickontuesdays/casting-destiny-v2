@@ -4,7 +4,7 @@ const DestinyDataViewer = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [dataInfo, setDataInfo] = useState(null); // Track data source info
+  const [dataInfo, setDataInfo] = useState(null);
 
   useEffect(() => {
     fetchDestinyData();
@@ -19,7 +19,6 @@ const DestinyDataViewer = () => {
       if (result.success) {
         setData(result.data);
         
-        // Store data source information
         setDataInfo({
           cached: result.cached,
           fallback: result.fallback,
@@ -28,7 +27,6 @@ const DestinyDataViewer = () => {
           error: result.error
         });
         
-        // Log any warnings or fallback information
         if (result.fallback) {
           console.warn('Using cached data due to API issues:', result.error);
         }
@@ -344,7 +342,7 @@ const DestinyDataViewer = () => {
                       background: 'rgba(255, 215, 0, 0.1)',
                       borderRadius: '4px'
                     }}>
-                      {item.name} {item.slot && `(${item.slot})`}
+                      {item.name}
                     </div>
                   )) : (
                     <div style={{ color: '#888', fontStyle: 'italic' }}>
@@ -406,11 +404,6 @@ const DestinyDataViewer = () => {
                       borderRadius: '4px'
                     }}>
                       {item.name}
-                      {item.weaponType && (
-                        <span style={{ color: '#b3b3b3', fontSize: '0.8rem' }}>
-                          {' '}({item.weaponType})
-                        </span>
-                      )}
                       {item.damageType && item.damageType !== 'Kinetic' && (
                         <span style={{ 
                           color: getDamageTypeColor(item.damageType),
@@ -453,7 +446,7 @@ const DestinyDataViewer = () => {
             marginBottom: '20px',
             fontSize: '1.5rem'
           }}>
-            🗡️ Weapons
+            🗡️ Weapons (Sample)
           </h2>
           <div style={{
             display: 'grid',
@@ -472,7 +465,7 @@ const DestinyDataViewer = () => {
                   {slot.charAt(0).toUpperCase() + slot.slice(1)} ({items?.length || 0})
                 </h3>
                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                  {items && items.length > 0 ? items.slice(0, 20).map((item, index) => (
+                  {items && items.length > 0 ? items.map((item, index) => (
                     <div key={index} style={{
                       color: '#e6e6e6',
                       fontSize: '0.85rem',
@@ -486,11 +479,6 @@ const DestinyDataViewer = () => {
                   )) : (
                     <div style={{ color: '#888', fontStyle: 'italic' }}>
                       No weapons found for {slot} slot
-                    </div>
-                  )}
-                  {items && items.length > 20 && (
-                    <div style={{ color: '#b3b3b3', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                      +{items.length - 20} more...
                     </div>
                   )}
                 </div>
@@ -513,64 +501,78 @@ const DestinyDataViewer = () => {
       )}
 
       {/* Armor */}
-      <div style={{ marginBottom: '40px' }}>
-        <h2 style={{
-          color: '#f4a724',
-          marginBottom: '20px',
-          fontSize: '1.5rem'
-        }}>
-          🛡️ Armor
-        </h2>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '20px'
-        }}>
-          {Object.entries(data.armor).map(([className, classArmor]) => (
-            <div key={className} style={{
-              background: 'rgba(33, 150, 243, 0.1)',
-              borderRadius: '10px',
-              padding: '15px',
-              border: '1px solid rgba(33, 150, 243, 0.3)'
-            }}>
-              <h3 style={{ color: '#2196F3', marginBottom: '15px' }}>
-                {className}
-              </h3>
-              {Object.entries(classArmor).map(([slot, pieces]) => (
-                <div key={slot} style={{ marginBottom: '10px' }}>
-                  <div style={{ 
-                    color: '#2196F3', 
-                    fontSize: '0.9rem', 
-                    fontWeight: 'bold',
-                    marginBottom: '5px'
-                  }}>
-                    {slot.charAt(0).toUpperCase() + slot.slice(1)} ({pieces.length})
+      {data.armor && Object.keys(data.armor).length > 0 ? (
+        <div style={{ marginBottom: '40px' }}>
+          <h2 style={{
+            color: '#f4a724',
+            marginBottom: '20px',
+            fontSize: '1.5rem'
+          }}>
+            🛡️ Armor (Sample)
+          </h2>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '20px'
+          }}>
+            {Object.entries(data.armor).map(([className, classArmor]) => (
+              <div key={className} style={{
+                background: 'rgba(33, 150, 243, 0.1)',
+                borderRadius: '10px',
+                padding: '15px',
+                border: '1px solid rgba(33, 150, 243, 0.3)'
+              }}>
+                <h3 style={{ color: '#2196F3', marginBottom: '15px' }}>
+                  {className}
+                </h3>
+                {Object.entries(classArmor).map(([slot, pieces]) => (
+                  <div key={slot} style={{ marginBottom: '10px' }}>
+                    <div style={{ 
+                      color: '#2196F3', 
+                      fontSize: '0.9rem', 
+                      fontWeight: 'bold',
+                      marginBottom: '5px'
+                    }}>
+                      {slot.charAt(0).toUpperCase() + slot.slice(1)} ({pieces.length})
+                    </div>
+                    <div style={{ 
+                      maxHeight: '80px', 
+                      overflowY: 'auto',
+                      fontSize: '0.8rem'
+                    }}>
+                      {pieces.slice(0, 5).map((piece, index) => (
+                        <div key={index} style={{
+                          color: '#b3b3b3',
+                          marginBottom: '2px'
+                        }}>
+                          {piece.name}
+                        </div>
+                      ))}
+                      {pieces.length > 5 && (
+                        <div style={{ color: '#888', fontStyle: 'italic' }}>
+                          +{pieces.length - 5} more...
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ 
-                    maxHeight: '80px', 
-                    overflowY: 'auto',
-                    fontSize: '0.8rem'
-                  }}>
-                    {pieces.slice(0, 5).map((piece, index) => (
-                      <div key={index} style={{
-                        color: '#b3b3b3',
-                        marginBottom: '2px'
-                      }}>
-                        {piece.name}
-                      </div>
-                    ))}
-                    {pieces.length > 5 && (
-                      <div style={{ color: '#888', fontStyle: 'italic' }}>
-                        +{pieces.length - 5} more...
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{
+          background: 'rgba(255, 152, 0, 0.1)',
+          border: '1px solid rgba(255, 152, 0, 0.3)',
+          borderRadius: '10px',
+          padding: '20px',
+          marginBottom: '40px',
+          color: '#FF9800',
+          textAlign: 'center'
+        }}>
+          ⚠️ Armor data not available
+        </div>
+      )}
 
       {/* Mods */}
       {data.mods && Object.keys(data.mods).length > 0 ? (
@@ -580,11 +582,11 @@ const DestinyDataViewer = () => {
             marginBottom: '20px',
             fontSize: '1.5rem'
           }}>
-            🛠️ Mods
+            🛠️ Mods (Sample)
           </h2>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateColumns: 'repeat(2, 1fr)',
             gap: '20px'
           }}>
             {Object.entries(data.mods).map(([category, items]) => (
@@ -599,7 +601,7 @@ const DestinyDataViewer = () => {
                   {category.charAt(0).toUpperCase() + category.slice(1)} Mods ({items?.length || 0})
                 </h3>
                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                  {items && items.length > 0 ? items.slice(0, 15).map((item, index) => (
+                  {items && items.length > 0 ? items.map((item, index) => (
                     <div key={index} style={{
                       color: '#e6e6e6',
                       fontSize: '0.85rem',
@@ -613,11 +615,6 @@ const DestinyDataViewer = () => {
                   )) : (
                     <div style={{ color: '#888', fontStyle: 'italic' }}>
                       No {category} mods found
-                    </div>
-                  )}
-                  {items && items.length > 15 && (
-                    <div style={{ color: '#b3b3b3', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                      +{items.length - 15} more...
                     </div>
                   )}
                 </div>
@@ -640,7 +637,7 @@ const DestinyDataViewer = () => {
       )}
 
       {/* Seasonal Artifacts */}
-      {data.artifacts.length > 0 && (
+      {data.artifacts && data.artifacts.length > 0 ? (
         <div style={{ marginBottom: '40px' }}>
           <h2 style={{
             color: '#f4a724',
@@ -676,53 +673,79 @@ const DestinyDataViewer = () => {
             ))}
           </div>
         </div>
+      ) : (
+        <div style={{
+          background: 'rgba(255, 152, 0, 0.1)',
+          border: '1px solid rgba(255, 152, 0, 0.3)',
+          borderRadius: '10px',
+          padding: '20px',
+          marginBottom: '40px',
+          color: '#FF9800',
+          textAlign: 'center'
+        }}>
+          ⚠️ No seasonal artifacts found
+        </div>
       )}
 
       {/* Other Data */}
-      <div style={{ marginBottom: '40px' }}>
-        <h2 style={{
-          color: '#f4a724',
-          marginBottom: '20px',
-          fontSize: '1.5rem'
-        }}>
-          📦 Other Items
-        </h2>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '20px'
-        }}>
-          {Object.entries(data.other).map(([category, items]) => (
-            <div key={category} style={{
-              background: 'rgba(158, 158, 158, 0.1)',
-              borderRadius: '10px',
-              padding: '15px',
-              border: '1px solid rgba(158, 158, 158, 0.3)',
-              maxHeight: '200px'
-            }}>
-              <h3 style={{ color: '#9E9E9E', marginBottom: '15px' }}>
-                {category.charAt(0).toUpperCase() + category.slice(1)} ({items.length})
-              </h3>
-              <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
-                {items.slice(0, 10).map((item, index) => (
-                  <div key={index} style={{
-                    color: '#b3b3b3',
-                    fontSize: '0.8rem',
-                    marginBottom: '3px'
-                  }}>
-                    {item.name}
-                  </div>
-                ))}
-                {items.length > 10 && (
-                  <div style={{ color: '#888', fontSize: '0.7rem', fontStyle: 'italic' }}>
-                    +{items.length - 10} more...
-                  </div>
-                )}
+      {data.other && Object.keys(data.other).length > 0 ? (
+        <div style={{ marginBottom: '40px' }}>
+          <h2 style={{
+            color: '#f4a724',
+            marginBottom: '20px',
+            fontSize: '1.5rem'
+          }}>
+            📦 Other Items
+          </h2>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '20px'
+          }}>
+            {Object.entries(data.other).map(([category, items]) => (
+              <div key={category} style={{
+                background: 'rgba(158, 158, 158, 0.1)',
+                borderRadius: '10px',
+                padding: '15px',
+                border: '1px solid rgba(158, 158, 158, 0.3)',
+                maxHeight: '200px'
+              }}>
+                <h3 style={{ color: '#9E9E9E', marginBottom: '15px' }}>
+                  {category.charAt(0).toUpperCase() + category.slice(1)} ({items.length})
+                </h3>
+                <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                  {items.slice(0, 10).map((item, index) => (
+                    <div key={index} style={{
+                      color: '#b3b3b3',
+                      fontSize: '0.8rem',
+                      marginBottom: '3px'
+                    }}>
+                      {item.name}
+                    </div>
+                  ))}
+                  {items.length > 10 && (
+                    <div style={{ color: '#888', fontSize: '0.7rem', fontStyle: 'italic' }}>
+                      +{items.length - 10} more...
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{
+          background: 'rgba(255, 152, 0, 0.1)',
+          border: '1px solid rgba(255, 152, 0, 0.3)',
+          borderRadius: '10px',
+          padding: '20px',
+          marginBottom: '40px',
+          color: '#FF9800',
+          textAlign: 'center'
+        }}>
+          ⚠️ Other items data not available
+        </div>
+      )}
 
       {/* Data Summary */}
       <div style={{
@@ -750,36 +773,40 @@ const DestinyDataViewer = () => {
             <div>{data.exotics?.weapons ? Object.values(data.exotics.weapons).reduce((total, items) => total + (items?.length || 0), 0) : 0}</div>
           </div>
           <div>
-            <div style={{ color: '#9C27B0', fontWeight: 'bold' }}>Total Weapons</div>
+            <div style={{ color: '#9C27B0', fontWeight: 'bold' }}>Sample Weapons</div>
             <div>{data.weapons ? Object.values(data.weapons).reduce((total, items) => total + (items?.length || 0), 0) : 0}</div>
           </div>
           <div>
-            <div style={{ color: '#4CAF50', fontWeight: 'bold' }}>Total Mods</div>
+            <div style={{ color: '#4CAF50', fontWeight: 'bold' }}>Sample Mods</div>
             <div>{data.mods ? Object.values(data.mods).reduce((total, items) => total + (items?.length || 0), 0) : 0}</div>
           </div>
           <div>
             <div style={{ color: '#FF9800', fontWeight: 'bold' }}>Artifacts</div>
             <div>{data.artifacts?.length || 0}</div>
           </div>
+          <div>
+            <div style={{ color: '#2196F3', fontWeight: 'bold' }}>Data Version</div>
+            <div>{data.metadata?.version || 'N/A'}</div>
+          </div>
         </div>
+        {data.metadata && (
+          <div style={{
+            marginTop: '15px',
+            padding: '10px',
+            background: 'rgba(244, 167, 36, 0.1)',
+            borderRadius: '8px',
+            fontSize: '0.9rem',
+            color: '#b3b3b3'
+          }}>
+            Optimized dataset: {data.metadata.totalFilteredItems} essential items from {data.metadata.totalOriginalItems} total items
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-// ADDED: Missing helper functions that were causing console errors
-const getDamageTypeIcon = (damageType) => {
-  const icons = {
-    'Arc': '⚡',
-    'Solar': '🔥', 
-    'Void': '🌌',
-    'Stasis': '❄️',
-    'Strand': '🌿'
-  };
-  return icons[damageType] || '⚡';
-};
-
-// ADDED: Helper component for displaying subclass data sections
+// Helper component for displaying subclass data sections
 const SubclassDataSection = ({ title, items, color, maxHeight }) => (
   <div style={{ marginBottom: '15px' }}>
     <h6 style={{ 
@@ -838,6 +865,17 @@ const getDamageTypeColor = (damageType) => {
     'Strand': '#00C851'
   };
   return colors[damageType] || '#e6e6e6';
+};
+
+const getDamageTypeIcon = (damageType) => {
+  const icons = {
+    'Arc': '⚡',
+    'Solar': '🔥', 
+    'Void': '🌌',
+    'Stasis': '❄️',
+    'Strand': '🌿'
+  };
+  return icons[damageType] || '⚡';
 };
 
 export default DestinyDataViewer;

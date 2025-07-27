@@ -23,30 +23,62 @@ export default async function handler(req, res) {
 
     console.log('Fetching fresh Destiny data from Bungie API...');
     
-    // Fetch fresh data
+    // Fetch fresh data (now optimized for size)
     const freshData = await fetchAllDestinyData();
     
-    // Cache the data
-    cachedData = freshData;
+    // Check data size before caching
+    const dataSize = JSON.stringify(freshData).length;
+    console.log(`Data size: ${Math.round(dataSize / 1024)} KB`);
+    
+    if (dataSize > 3 * 1024 * 1024) { // 3MB limit to be safe
+      console.warn('Data size exceeds safe limit, further optimization needed');
+      
+      // Emergency size reduction - keep only most essential data
+      const emergencyData = {
+        classes: freshData.classes || {},
+        exotics: {
+          armor: freshData.exotics?.armor || {},
+          weapons: freshData.exotics?.weapons || {}
+        },
+        mods: {
+          armor: (freshData.mods?.armor || []).slice(0, 10),
+          weapon: (freshData.mods?.weapon || []).slice(0, 10),
+          combat: (freshData.mods?.combat || []).slice(0, 10)
+        },
+        artifacts: (freshData.artifacts || []).slice(0, 5),
+        metadata: {
+          ...freshData.metadata,
+          emergencyReduction: true,
+          originalSize: dataSize
+        }
+      };
+      
+      cachedData = emergencyData;
+    } else {
+      cachedData = freshData;
+    }
+    
     cacheTimestamp = Date.now();
     
-    console.log('Destiny data fetch complete, data cached');
+    console.log('Destiny data fetch complete, data cached successfully');
     
     return res.status(200).json({
       success: true,
-      data: freshData,
+      data: cachedData,
       cached: false,
-      timestamp: cacheTimestamp
+      timestamp: cacheTimestamp,
+      dataSize: Math.round(JSON.stringify(cachedData).length / 1024) + ' KB'
     });
     
   } catch (error) {
     console.error('Error in fetch-all-data API:', error);
     
-    // ENHANCED: Log more details about the error for debugging
+    // Enhanced error logging for debugging
     console.error('Error details:', {
       message: error.message,
-      stack: error.stack,
-      name: error.name
+      stack: error.stack?.split('\n').slice(0, 5).join('\n'), // Limit stack trace
+      name: error.name,
+      timestamp: new Date().toISOString()
     });
     
     // If we have cached data and there's an error, return cached data as fallback
@@ -58,15 +90,18 @@ export default async function handler(req, res) {
         cached: true,
         fallback: true,
         error: 'Fresh data unavailable, using cached data',
-        originalError: error.message // ENHANCED: Include original error message
+        originalError: error.message,
+        cacheAge: cacheTimestamp ? Math.floor((Date.now() - cacheTimestamp) / 1000) : 'unknown'
       });
     }
     
+    // If no cached data available, return minimal error response
     return res.status(500).json({
       success: false,
       error: 'Failed to fetch Destiny data',
-      details: error.message,
-      suggestion: 'This may be due to Bungie API changes or temporary service issues. Please try again later.' // ENHANCED: Helpful suggestion
+      details: process.env.NODE_ENV === 'development' ? error.message : 'API temporarily unavailable',
+      suggestion: 'This may be due to Bungie API changes or temporary service issues. Please try again later.',
+      retryAfter: 300 // Suggest retry after 5 minutes
     });
   }
 }
