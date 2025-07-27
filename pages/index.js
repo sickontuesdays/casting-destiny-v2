@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import Head from 'next/head';
 import { useAuth } from '../lib/useAuth';
+import TabNavigation from '../components/TabNavigation'; // NEW: Add tab navigation
 import BuildCreator from '../components/BuildCreator';
 import BuildDisplay from '../components/BuildDisplay';
-import MissingItemsDisplay from '../components/MissingItemsDisplay'; // NEW: Import MissingItemsDisplay
+import MissingItemsDisplay from '../components/MissingItemsDisplay';
 import ResultsDisplay from '../components/ResultsDisplay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AuthButton from '../components/AuthButton';
@@ -21,10 +22,9 @@ export default function Home() {
     setError(null);
     
     try {
-      let endpoint = '/api/destiny/search'; // This now has build intelligence
+      let endpoint = '/api/destiny/search';
       let requestBody = { keywords };
 
-      // If user is logged in and wants inventory-only search
       if (session && useInventoryOnly && selectedCharacter) {
         endpoint = '/api/destiny/search-inventory';
         requestBody = {
@@ -57,11 +57,10 @@ export default function Home() {
     }
   };
 
-  // Set default character when session loads
   React.useEffect(() => {
     if (session?.user?.destinyMemberships && !selectedCharacter) {
       const primaryMembership = session.user.destinyMemberships.find(
-        m => m.membershipType === 3 // Steam
+        m => m.membershipType === 3
       ) || session.user.destinyMemberships[0];
       
       if (primaryMembership) {
@@ -81,12 +80,15 @@ export default function Home() {
       <div style={{
         minHeight: '100vh',
         background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-        color: '#e6e6e6',
-        padding: '20px'
+        color: '#e6e6e6'
       }}>
+        {/* NEW: Tab Navigation */}
+        <TabNavigation />
+        
         <div style={{
           maxWidth: '1200px',
-          margin: '0 auto'
+          margin: '0 auto',
+          padding: '20px'
         }}>
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
@@ -133,7 +135,6 @@ export default function Home() {
                 gap: '15px',
                 alignItems: 'flex-start'
               }}>
-                {/* Search Type Toggle */}
                 <label style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -154,7 +155,6 @@ export default function Home() {
                   <span>🎒 Only show builds I can make with my inventory</span>
                 </label>
 
-                {/* Character Selection (only show when inventory mode is on) */}
                 {useInventoryOnly && session.user.destinyMemberships && (
                   <div style={{
                     display: 'flex',
@@ -201,7 +201,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Search Mode Indicator */}
               <div style={{
                 marginTop: '15px',
                 padding: '10px',
@@ -223,13 +222,10 @@ export default function Home() {
             </div>
           )}
 
-          {/* Build Creator */}
           <BuildCreator onSearch={handleSearch} isLoading={isLoading} />
 
-          {/* Loading */}
           {isLoading && <LoadingSpinner />}
 
-          {/* Error Display */}
           {error && (
             <div style={{
               background: 'rgba(255, 0, 0, 0.1)',
@@ -243,10 +239,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* Results */}
           {searchResults && !isLoading && (
             <>
-              {/* Search Summary */}
               <div style={{
                 background: 'rgba(255, 255, 255, 0.05)',
                 borderRadius: '10px',
@@ -272,7 +266,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* NEW: Display builds, missing items analysis, or regular items based on search type */}
               {searchResults.searchType === 'builds' ? (
                 <BuildDisplay 
                   builds={searchResults.builds}
