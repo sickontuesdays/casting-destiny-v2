@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run download-manifest && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "download-manifest": "node scripts/download-manifest.js",
+    "download-manifest:force": "FORCE_UPDATE=true node scripts/download-manifest.js",
+    "check-manifest": "node -e \"const fs = require('fs'); const path = require('path'); const file = path.join('data', 'manifest-info.json'); if (fs.existsSync(file)) { const data = JSON.parse(fs.readFileSync(file, 'utf8')); console.log('Manifest Version:', data.version); console.log('Item Count:', data.itemCount); console.log('Downloaded:', new Date(data.downloadedAt).toLocaleString()); } else { console.log('No manifest data found'); }\""
   },
   "dependencies": {
     "next": "14.0.0",

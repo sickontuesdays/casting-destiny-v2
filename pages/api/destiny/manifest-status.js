@@ -1,15 +1,26 @@
+import { getBuildDataStatus, getManifestInfo } from '../../../lib/build-time-data-loader';
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      // Return manifest status
+      // Get real build-time data status
+      const dataStatus = getBuildDataStatus();
+      const manifestInfo = getManifestInfo();
+      
       return res.status(200).json({
         success: true,
-        isCached: false,
-        currentVersion: 'unknown',
-        lastUpdated: null,
-        cacheSize: 0,
-        needsUpdate: true,
-        message: 'Manifest caching not yet implemented - using fallback system'
+        isCached: dataStatus.hasData,
+        currentVersion: dataStatus.version,
+        lastUpdated: dataStatus.lastUpdate,
+        cacheSize: dataStatus.hasData ? 2000000 : 0, // Approximate size in bytes
+        needsUpdate: false, // Build-time data is updated via GitHub Actions
+        message: dataStatus.isFallback ? 
+          'Using fallback data - manifest will be updated via GitHub Actions' :
+          `Build-time manifest data loaded (v${dataStatus.version})`,
+        itemCount: manifestInfo.data?.itemCount || 0,
+        categories: manifestInfo.data?.categories || {},
+        downloadedAt: manifestInfo.data?.downloadedAt,
+        isFallback: dataStatus.isFallback
       });
     }
 

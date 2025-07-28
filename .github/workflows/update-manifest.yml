@@ -1,0 +1,169 @@
+name: Update Destiny Manifest
+
+on:
+  # Run every Tuesday at 1:30 PM EST (18:30 UTC)
+  schedule:
+    - cron: '30 18 * * 2'
+  
+  # Allow manual triggering for testing
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Force update even if version unchanged'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  BUNGIE_API_KEY: ${{ secrets.BUNGIE_API_KEY }}
+
+jobs:
+  update-manifest:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Check current manifest version
+        id: check-version
+        run: |
+          echo "Checking current manifest version..."
+          
+          # Get current version from our stored data (if exists)
+          if [ -f "data/manifest-info.json" ]; then
+            CURRENT_VERSION=$(cat data/manifest-info.json | jq -r '.version // "none"')
+          else
+            CURRENT_VERSION="none"
+          fi
+          
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current stored version: $CURRENT_VERSION"
+          
+      - name: Fetch latest manifest version from Bungie
+        id: fetch-version
+        run: |
+          echo "Fetching latest manifest version from Bungie API..."
+          
+          LATEST_VERSION=$(curl -s -H "X-API-Key: $BUNGIE_API_KEY" \
+            "https://www.bungie.net/Platform/Destiny2/Manifest/" | \
+            jq -r '.Response.version // "unknown"')
+          
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest Bungie version: $LATEST_VERSION"
+          
+          if [ "$LATEST_VERSION" = "unknown" ] || [ "$LATEST_VERSION" = "null" ]; then
+            echo "❌ Failed to fetch manifest version from Bungie API"
+            exit 1
+          fi
+          
+      - name: Check if update needed
+        id: update-check
+        run: |
+          CURRENT="${{ steps.check-version.outputs.current_version }}"
+          LATEST="${{ steps.fetch-version.outputs.latest_version }}"
+          FORCE="${{ github.event.inputs.force_update }}"
+          
+          echo "Version comparison:"
+          echo "  Current: $CURRENT"
+          echo "  Latest:  $LATEST"
+          echo "  Force:   $FORCE"
+          
+          if [ "$CURRENT" != "$LATEST" ] || [ "$FORCE" = "true" ]; then
+            echo "✅ Update needed"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ No update needed - versions match"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Download and process manifest
+        if: steps.update-check.outputs.needs_update == 'true'
+        run: |
+          echo "🔄 Downloading and processing Destiny manifest..."
+          node scripts/download-manifest.js
+          
+      - name: Commit updated manifest data
+        if: steps.update-check.outputs.needs_update == 'true'
+        run: |
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add the updated data files
+          git add data/
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes to commit"
+          else
+            # Commit with manifest version info
+            LATEST_VERSION="${{ steps.fetch-version.outputs.latest_version }}"
+            git commit -m "📦 Update Destiny manifest to version $LATEST_VERSION
+
+            - Downloaded: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+            - Bungie Version: $LATEST_VERSION
+            - Build-essential items updated
+            - Automatic update via GitHub Actions"
+            
+            git push
+            
+            echo "✅ Manifest data updated and committed"
+          fi
+          
+      - name: Summary
+        run: |
+          if [ "${{ steps.update-check.outputs.needs_update }}" = "true" ]; then
+            echo "🎉 Manifest update completed successfully!"
+            echo "Version: ${{ steps.fetch-version.outputs.latest_version }}"
+            echo "Next automatic update: Next Tuesday at 1:30 PM EST"
+          else
+            echo "ℹ️ No update was needed"
+            echo "Current version is already up to date"
+          fi
+          
+      - name: Create deployment comment
+        if: steps.update-check.outputs.needs_update == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = "${{ steps.fetch-version.outputs.latest_version }}";
+            const timestamp = new Date().toLocaleString('en-US', {
+              timeZone: 'America/New_York',
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            
+            const body = `🔮 **Destiny Manifest Updated**
+            
+            **Version:** \`${version}\`
+            **Updated:** ${timestamp} EST
+            **Trigger:** Automatic weekly update
+            
+            The app will automatically redeploy with the latest Destiny 2 data within a few minutes.
+            
+            ---
+            *This update was triggered by the weekly GitHub Action on Tuesday at 1:30 PM EST.*`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📦 Destiny Manifest Update - ${version}`,
+              body: body,
+              labels: ['manifest-update', 'automated']
+            });
