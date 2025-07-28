@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useAuth } from '../lib/useAuth';
-import TabNavigation from '../components/TabNavigation'; // NEW: Add tab navigation
+import TabNavigation from '../components/TabNavigation';
 import BuildCreator from '../components/BuildCreator';
 import BuildDisplay from '../components/BuildDisplay';
 import MissingItemsDisplay from '../components/MissingItemsDisplay';
@@ -10,27 +10,138 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import AuthButton from '../components/AuthButton';
 
 export default function Home() {
-  const { session } = useAuth();
+  const { session, isAuthenticated } = useAuth();
   const [searchResults, setSearchResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [useInventoryOnly, setUseInventoryOnly] = useState(false);
-  const [selectedCharacter, setSelectedCharacter] = useState(null);
+  const [manifestStatus, setManifestStatus] = useState(null);
+  const [playerData, setPlayerData] = useState(null);
+  const [searchConfig, setSearchConfig] = useState({
+    mode: 'builds',
+    useInventoryOnly: false,
+    selectedCharacter: null
+  });
 
-  const handleSearch = async (keywords) => {
+  // Check manifest status on load
+  useEffect(() => {
+    checkManifestStatus();
+  }, []);
+
+  // Load player data when authenticated
+  useEffect(() => {
+    if (isAuthenticated && session?.user?.destinyMemberships) {
+      loadPlayerData();
+    }
+  }, [isAuthenticated, session]);
+
+  // Set default character selection
+  useEffect(() => {
+    if (session?.user?.destinyMemberships && !searchConfig.selectedCharacter) {
+      const primaryMembership = session.user.destinyMemberships.find(
+        m => m.isPrimary || m.membershipType === 3 // Prefer Steam
+      ) || session.user.destinyMemberships[0];
+      
+      setSearchConfig(prev => ({
+        ...prev,
+        selectedCharacter: primaryMembership
+      }));
+    }
+  }, [session, searchConfig.selectedCharacter]);
+
+  const checkManifestStatus = async () => {
+    try {
+      const response = await fetch('/api/destiny/manifest-status');
+      const status = await response.json();
+      setManifestStatus(status);
+      
+      // If manifest needs update, trigger it
+      if (status.needsUpdate) {
+        console.log('Manifest needs update, triggering download...');
+        await fetch('/api/destiny/manifest-status', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update' })
+        });
+      }
+    } catch (error) {
+      console.error('Failed to check manifest status:', error);
+    }
+  };
+
+  const loadPlayerData = async () => {
+    if (!searchConfig.selectedCharacter) return;
+    
+    try {
+      const response = await fetch('/api/destiny/player-builds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          membershipType: searchConfig.selectedCharacter.membershipType,
+          membershipId: searchConfig.selectedCharacter.membershipId
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setPlayerData({
+          displayName: searchConfig.selectedCharacter.displayName,
+          itemCount: data.playerItems?.length || 0,
+          builds: data.availableBuilds || [],
+          exoticCount: data.playerStats?.exoticCount || 0,
+          buildPotential: data.playerStats?.buildPotential || 0
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load player data:', error);
+    }
+  };
+
+  const handleSearch = async (searchParams) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      let endpoint = '/api/destiny/search';
-      let requestBody = { keywords };
+      let endpoint;
+      let requestBody;
 
-      if (session && useInventoryOnly && selectedCharacter) {
-        endpoint = '/api/destiny/search-inventory';
+      // Determine which API endpoint to use based on search mode
+      switch (searchParams.mode) {
+        case 'builds':
+          endpoint = searchConfig.useInventoryOnly ? 
+            '/api/destiny/player-builds' : 
+            '/api/destiny/organized-data';
+          break;
+        case 'items':
+          endpoint = '/api/destiny/search-items';
+          break;
+        case 'player':
+          endpoint = '/api/destiny/player-builds';
+          break;
+        default:
+          endpoint = '/api/destiny/organized-data';
+      }
+
+      // Prepare request body based on search type
+      if (searchParams.mode === 'player' || searchConfig.useInventoryOnly) {
         requestBody = {
-          keywords,
-          membershipType: selectedCharacter.membershipType,
-          membershipId: selectedCharacter.membershipId
+          query: searchParams.query,
+          filters: searchParams.filters,
+          membershipType: searchConfig.selectedCharacter?.membershipType,
+          membershipId: searchConfig.selectedCharacter?.membershipId,
+          searchType: 'builds'
+        };
+      } else if (searchParams.mode === 'items') {
+        requestBody = {
+          query: searchParams.query,
+          filters: searchParams.filters,
+          itemTypes: ['weapons', 'armor', 'mods', 'abilities'],
+          limit: 50
+        };
+      } else {
+        requestBody = {
+          query: searchParams.query,
+          filters: searchParams.filters,
+          searchType: 'builds'
         };
       }
 
@@ -45,7 +156,11 @@ export default function Home() {
       const data = await response.json();
       
       if (data.success) {
-        setSearchResults(data);
+        setSearchResults({
+          ...data,
+          searchMode: searchParams.mode,
+          playerMode: searchParams.mode === 'player' || searchConfig.useInventoryOnly
+        });
       } else {
         setError(data.error || 'Search failed');
       }
@@ -57,126 +172,212 @@ export default function Home() {
     }
   };
 
-  React.useEffect(() => {
-    if (session?.user?.destinyMemberships && !selectedCharacter) {
-      const primaryMembership = session.user.destinyMemberships.find(
-        m => m.membershipType === 3
-      ) || session.user.destinyMemberships[0];
-      
-      if (primaryMembership) {
-        setSelectedCharacter(primaryMembership);
+  const handleSearchConfigChange = (key, value) => {
+    setSearchConfig(prev => ({
+      ...prev,
+      [key]: value
+    }));
+    
+    // Reload player data if character changed
+    if (key === 'selectedCharacter' || key === 'useInventoryOnly') {
+      if (value && isAuthenticated) {
+        loadPlayerData();
       }
     }
-  }, [session, selectedCharacter]);
+  };
 
   return (
     <>
       <Head>
-        <title>Casting Destiny</title>
-        <meta name="description" content="Cast your perfect Destiny 2 build based on your playstyle - discover complete builds that work together" />
+        <title>Casting Destiny - Build Creator</title>
+        <meta name="description" content="Create perfect Destiny 2 builds with AI-powered recommendations" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
       <div style={{
         minHeight: '100vh',
         background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-        color: '#e6e6e6'
+        color: '#E5E7EB'
       }}>
-        {/* NEW: Tab Navigation */}
         <TabNavigation />
         
         <div style={{
-          maxWidth: '1200px',
+          maxWidth: '1400px',
           margin: '0 auto',
           padding: '20px'
         }}>
           {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            marginBottom: '32px',
+            padding: '40px 20px'
+          }}>
             <h1 style={{
-              color: '#f4a724',
-              fontSize: '2.5rem',
-              marginBottom: '10px',
-              textShadow: '0 0 10px rgba(244, 167, 36, 0.3)'
+              background: 'linear-gradient(135deg, #4FACFE, #00F2FE)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              color: 'transparent',
+              fontSize: '3rem',
+              marginBottom: '16px',
+              fontWeight: '700',
+              textShadow: '0 0 30px rgba(79, 172, 254, 0.3)'
             }}>
               🔮 Casting Destiny
             </h1>
             <p style={{
-              color: '#b3b3b3',
-              fontSize: '1.1rem'
+              color: '#B8BCC8',
+              fontSize: '1.2rem',
+              maxWidth: '600px',
+              margin: '0 auto',
+              lineHeight: '1.5'
             }}>
-              Describe your playstyle and get complete builds that synergize perfectly together
+              Discover and create perfect Destiny 2 builds with intelligent recommendations
+              {isAuthenticated && playerData && (
+                <span style={{ 
+                  display: 'block',
+                  marginTop: '8px',
+                  color: '#4FACFE',
+                  fontSize: '1rem'
+                }}>
+                  ✨ Personalized for {playerData.displayName} with {playerData.itemCount} items
+                </span>
+              )}
             </p>
           </div>
 
+          {/* Manifest Status */}
+          {manifestStatus && (
+            <div style={{
+              background: manifestStatus.isCached ? 
+                'rgba(34, 197, 94, 0.1)' : 
+                'rgba(245, 158, 11, 0.1)',
+              border: `1px solid ${manifestStatus.isCached ? 
+                'rgba(34, 197, 94, 0.3)' : 
+                'rgba(245, 158, 11, 0.3)'}`,
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              textAlign: 'center'
+            }}>
+              <div style={{
+                color: manifestStatus.isCached ? '#22C55E' : '#F59E0B',
+                fontSize: '0.9rem',
+                fontWeight: '500'
+              }}>
+                {manifestStatus.isCached ? '✅' : '⏳'} 
+                {manifestStatus.isCached ? 
+                  ` Manifest cached (${Math.round(manifestStatus.cacheSize / 1024 / 1024)}MB) - Fast searches enabled` :
+                  ' Downloading latest Destiny data...'
+                }
+              </div>
+            </div>
+          )}
+
           {/* Auth Section */}
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            marginBottom: '32px' 
+          }}>
             <AuthButton />
           </div>
 
-          {/* Search Options (only show when logged in) */}
-          {session && (
+          {/* Search Configuration */}
+          {isAuthenticated && (
             <div style={{
-              background: 'rgba(255, 255, 255, 0.1)',
+              background: 'linear-gradient(135deg, rgba(30, 30, 46, 0.95), rgba(22, 33, 62, 0.95))',
               backdropFilter: 'blur(10px)',
-              borderRadius: '15px',
+              borderRadius: '12px',
               padding: '20px',
               marginBottom: '20px',
-              border: '1px solid rgba(244, 167, 36, 0.2)'
+              border: '1px solid rgba(79, 172, 254, 0.2)'
             }}>
               <h3 style={{
-                color: '#f4a724',
-                marginBottom: '15px',
-                fontSize: '1.1rem'
-              }}>Search Options</h3>
-              
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '15px',
-                alignItems: 'flex-start'
+                color: '#4FACFE',
+                marginBottom: '16px',
+                fontSize: '1.1rem',
+                fontWeight: '600'
               }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  color: '#e6e6e6'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={useInventoryOnly}
-                    onChange={(e) => setUseInventoryOnly(e.target.checked)}
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      accentColor: '#f4a724'
-                    }}
-                  />
-                  <span>🎒 Only show builds I can make with my inventory</span>
-                </label>
-
-                {useInventoryOnly && session.user.destinyMemberships && (
-                  <div style={{
+                🎯 Search Configuration
+              </h3>
+              
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                gap: '16px',
+                alignItems: 'start'
+              }}>
+                {/* Inventory Mode Toggle */}
+                <div>
+                  <label style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    marginLeft: '28px'
+                    gap: '12px',
+                    cursor: 'pointer',
+                    color: '#E5E7EB',
+                    padding: '12px',
+                    background: searchConfig.useInventoryOnly ? 
+                      'rgba(34, 197, 94, 0.1)' : 
+                      'rgba(79, 172, 254, 0.05)',
+                    borderRadius: '8px',
+                    border: `1px solid ${searchConfig.useInventoryOnly ? 
+                      'rgba(34, 197, 94, 0.3)' : 
+                      'rgba(79, 172, 254, 0.2)'}`,
+                    transition: 'all 0.3s ease'
                   }}>
-                    <span style={{ color: '#b3b3b3' }}>Platform:</span>
+                    <input
+                      type="checkbox"
+                      checked={searchConfig.useInventoryOnly}
+                      onChange={(e) => handleSearchConfigChange('useInventoryOnly', e.target.checked)}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        accentColor: '#4FACFE'
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '600' }}>
+                        🎒 Use My Inventory Only
+                      </div>
+                      <div style={{ 
+                        fontSize: '0.8rem', 
+                        color: '#B8BCC8',
+                        marginTop: '2px'
+                      }}>
+                        Show only builds you can make right now
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Character Selection */}
+                {session?.user?.destinyMemberships && searchConfig.useInventoryOnly && (
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      color: '#B8BCC8',
+                      fontSize: '0.9rem',
+                      marginBottom: '8px',
+                      fontWeight: '500'
+                    }}>
+                      Platform:
+                    </label>
                     <select
-                      value={selectedCharacter?.membershipId || ''}
+                      value={searchConfig.selectedCharacter?.membershipId || ''}
                       onChange={(e) => {
                         const membership = session.user.destinyMemberships.find(
                           m => m.membershipId === e.target.value
                         );
-                        setSelectedCharacter(membership);
+                        handleSearchConfigChange('selectedCharacter', membership);
                       }}
                       style={{
+                        width: '100%',
                         background: 'rgba(0, 0, 0, 0.3)',
-                        border: '1px solid rgba(244, 167, 36, 0.3)',
-                        borderRadius: '5px',
-                        color: '#e6e6e6',
-                        padding: '5px 10px'
+                        border: '1px solid rgba(79, 172, 254, 0.3)',
+                        borderRadius: '8px',
+                        color: '#E5E7EB',
+                        padding: '12px 16px',
+                        fontSize: '0.9rem'
                       }}
                     >
                       {session.user.destinyMemberships.map((membership) => (
@@ -185,76 +386,141 @@ export default function Home() {
                           value={membership.membershipId}
                           style={{ background: '#1a1a2e' }}
                         >
-                          {membership.displayName} ({
-                            membership.membershipType === 1 ? 'Xbox' :
-                            membership.membershipType === 2 ? 'PlayStation' :
-                            membership.membershipType === 3 ? 'Steam' :
-                            membership.membershipType === 4 ? 'Battle.net' :
-                            membership.membershipType === 5 ? 'Stadia' :
-                            membership.membershipType === 6 ? 'Epic Games' :
-                            'Unknown'
-                          })
+                          {membership.displayName} ({membership.platformName})
+                          {membership.isPrimary && ' • Primary'}
                         </option>
                       ))}
                     </select>
                   </div>
                 )}
+
+                {/* Player Stats */}
+                {playerData && searchConfig.useInventoryOnly && (
+                  <div style={{
+                    background: 'rgba(79, 172, 254, 0.05)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    border: '1px solid rgba(79, 172, 254, 0.2)'
+                  }}>
+                    <div style={{
+                      color: '#4FACFE',
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      marginBottom: '8px'
+                    }}>
+                      📊 Your Arsenal
+                    </div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '8px',
+                      fontSize: '0.8rem'
+                    }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: '#F59E0B', fontWeight: '600' }}>
+                          {playerData.itemCount}
+                        </div>
+                        <div style={{ color: '#B8BCC8' }}>Items</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: '#10B981', fontWeight: '600' }}>
+                          {playerData.exoticCount}
+                        </div>
+                        <div style={{ color: '#B8BCC8' }}>Exotics</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: '#8B5CF6', fontWeight: '600' }}>
+                          {playerData.buildPotential}%
+                        </div>
+                        <div style={{ color: '#B8BCC8' }}>Potential</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* Mode Explanation */}
               <div style={{
-                marginTop: '15px',
-                padding: '10px',
-                background: useInventoryOnly ? 
-                  'rgba(76, 175, 80, 0.1)' : 
-                  'rgba(244, 167, 36, 0.1)',
+                marginTop: '16px',
+                padding: '12px',
+                background: searchConfig.useInventoryOnly ? 
+                  'rgba(34, 197, 94, 0.1)' : 
+                  'rgba(79, 172, 254, 0.1)',
                 borderRadius: '8px',
-                border: `1px solid ${useInventoryOnly ? 
-                  'rgba(76, 175, 80, 0.3)' : 
-                  'rgba(244, 167, 36, 0.3)'}`,
-                color: useInventoryOnly ? '#4CAF50' : '#f4a724'
+                border: `1px solid ${searchConfig.useInventoryOnly ? 
+                  'rgba(34, 197, 94, 0.2)' : 
+                  'rgba(79, 172, 254, 0.2)'}`,
+                color: searchConfig.useInventoryOnly ? '#22C55E' : '#4FACFE',
+                fontSize: '0.9rem',
+                textAlign: 'center'
               }}>
-                {useInventoryOnly ? (
-                  <span>🎯 Searching your inventory only - results will be builds you can make right now!</span>
+                {searchConfig.useInventoryOnly ? (
+                  <span>🎯 Searching your inventory - results show builds you can equip immediately!</span>
                 ) : (
-                  <span>🌍 Searching all Destiny items - results will show optimal builds regardless of ownership</span>
+                  <span>🌍 Searching all Destiny items - results show optimal builds regardless of ownership</span>
                 )}
               </div>
             </div>
           )}
 
-          <BuildCreator onSearch={handleSearch} isLoading={isLoading} />
+          {/* Build Creator */}
+          <BuildCreator 
+            onSearch={handleSearch} 
+            isLoading={isLoading}
+            playerData={playerData}
+          />
 
+          {/* Loading State */}
           {isLoading && <LoadingSpinner />}
 
+          {/* Error State */}
           {error && (
             <div style={{
-              background: 'rgba(255, 0, 0, 0.1)',
-              border: '1px solid rgba(255, 0, 0, 0.3)',
-              borderRadius: '10px',
-              padding: '15px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '12px',
+              padding: '20px',
               marginBottom: '20px',
-              color: '#ff6b6b'
+              color: '#FCA5A5',
+              textAlign: 'center'
             }}>
-              ⚠️ {error}
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚠️</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '4px' }}>
+                Search Error
+              </div>
+              <div style={{ fontSize: '0.9rem' }}>
+                {error}
+              </div>
             </div>
           )}
 
+          {/* Search Results */}
           {searchResults && !isLoading && (
             <>
+              {/* Results Summary */}
               <div style={{
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '10px',
-                padding: '15px',
+                background: 'rgba(79, 172, 254, 0.05)',
+                borderRadius: '8px',
+                padding: '16px',
                 marginBottom: '20px',
-                border: '1px solid rgba(244, 167, 36, 0.1)'
+                border: '1px solid rgba(79, 172, 254, 0.2)'
               }}>
-                <div style={{ color: '#b3b3b3', fontSize: '0.9rem' }}>
+                <div style={{ 
+                  color: '#4FACFE', 
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  textAlign: 'center'
+                }}>
                   {searchResults.message || `Found ${searchResults.totalFound} results`}
-                  {searchResults.inventorySize && (
-                    <span> from your {searchResults.inventorySize} owned items</span>
+                  {searchResults.playerMode && (
+                    <span style={{ color: '#22C55E' }}> • From your inventory</span>
                   )}
                   {searchResults.searchBreakdown && (
-                    <div style={{ marginTop: '5px' }}>
+                    <div style={{ 
+                      marginTop: '8px',
+                      fontSize: '0.8rem',
+                      color: '#B8BCC8'
+                    }}>
                       {searchResults.searchBreakdown.included?.length > 0 && (
                         <span>Including: <em>{searchResults.searchBreakdown.included.join(', ')}</em></span>
                       )}
@@ -266,11 +532,13 @@ export default function Home() {
                 </div>
               </div>
 
-              {searchResults.searchType === 'builds' ? (
+              {/* Display Results Based on Type */}
+              {searchResults.searchType === 'builds' || searchResults.builds ? (
                 <BuildDisplay 
-                  builds={searchResults.builds}
+                  builds={searchResults.builds || searchResults.availableBuilds}
                   searchQuery={searchResults.query}
                   totalFound={searchResults.totalFound}
+                  playerMode={searchResults.playerMode}
                 />
               ) : searchResults.searchType === 'missing_items' || 
                   searchResults.searchType === 'partial_items' || 
@@ -278,12 +546,98 @@ export default function Home() {
                 <MissingItemsDisplay searchResults={searchResults} />
               ) : (
                 <ResultsDisplay 
-                  results={searchResults.results}
+                  results={searchResults.results || searchResults.items}
                   totalFound={searchResults.totalFound}
                   processedKeywords={searchResults.processedKeywords}
                 />
               )}
             </>
+          )}
+
+          {/* Getting Started Guide */}
+          {!searchResults && !isLoading && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(30, 30, 46, 0.95), rgba(22, 33, 62, 0.95))',
+              backdropFilter: 'blur(10px)',
+              borderRadius: '12px',
+              padding: '32px',
+              border: '1px solid rgba(79, 172, 254, 0.2)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚀</div>
+              <h2 style={{
+                color: '#4FACFE',
+                fontSize: '1.5rem',
+                marginBottom: '16px',
+                fontWeight: '600'
+              }}>
+                Ready to Create Amazing Builds?
+              </h2>
+              <div style={{
+                color: '#B8BCC8',
+                fontSize: '1rem',
+                marginBottom: '24px',
+                maxWidth: '600px',
+                margin: '0 auto 24px',
+                lineHeight: '1.5'
+              }}>
+                Describe your ideal playstyle and discover builds that work perfectly together.
+                {isAuthenticated && ' Connect your Bungie account to see builds you can make right now!'}
+              </div>
+              
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                gap: '16px',
+                maxWidth: '800px',
+                margin: '0 auto'
+              }}>
+                <div style={{
+                  background: 'rgba(34, 197, 94, 0.1)',
+                  border: '1px solid rgba(34, 197, 94, 0.2)',
+                  borderRadius: '8px',
+                  padding: '16px'
+                }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>💥</div>
+                  <div style={{ color: '#22C55E', fontWeight: '600', marginBottom: '4px' }}>
+                    Powerful Synergies
+                  </div>
+                  <div style={{ color: '#B8BCC8', fontSize: '0.9rem' }}>
+                    Exotic armor, mods, and subclass abilities that work together
+                  </div>
+                </div>
+                
+                <div style={{
+                  background: 'rgba(139, 92, 246, 0.1)',
+                  border: '1px solid rgba(139, 92, 246, 0.2)',
+                  borderRadius: '8px',
+                  padding: '16px'
+                }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
+                  <div style={{ color: '#8B5CF6', fontWeight: '600', marginBottom: '4px' }}>
+                    Smart Recommendations
+                  </div>
+                  <div style={{ color: '#B8BCC8', fontSize: '0.9rem' }}>
+                    AI-powered suggestions based on your playstyle preferences
+                  </div>
+                </div>
+                
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.2)',
+                  borderRadius: '8px',
+                  padding: '16px'
+                }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚡</div>
+                  <div style={{ color: '#F59E0B', fontWeight: '600', marginBottom: '4px' }}>
+                    Instant Results
+                  </div>
+                  <div style={{ color: '#B8BCC8', fontSize: '0.9rem' }}>
+                    Get complete build guides with loadouts and gameplay tips
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>

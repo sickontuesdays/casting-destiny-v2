@@ -1,210 +1,447 @@
 import React, { useState } from 'react';
 
-const BuildCreator = ({ onSearch, isLoading }) => {
-  const [keywords, setKeywords] = useState('');
-  const [showAdvancedHelp, setShowAdvancedHelp] = useState(false);
+const BuildCreator = ({ onSearch, isLoading, playerData }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchMode, setSearchMode] = useState('builds'); // 'builds', 'items', 'player'
+  const [classFilter, setClassFilter] = useState('any');
+  const [damageFilter, setDamageFilter] = useState('any');
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [buildFocus, setBuildFocus] = useState('any');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (keywords.trim()) {
-      onSearch(keywords);
+    if (searchQuery.trim() || buildFocus !== 'any') {
+      onSearch({
+        query: searchQuery.trim() || buildFocus,
+        mode: searchMode,
+        filters: {
+          class: classFilter,
+          damage: damageFilter,
+          focus: buildFocus
+        }
+      });
     }
   };
 
-  const addSuggestion = (text) => {
-    const currentValue = keywords;
-    const newValue = currentValue ? `${currentValue}, ${text}` : text;
-    setKeywords(newValue);
+  const handleQuickSearch = (query) => {
+    setSearchQuery(query);
+    onSearch({
+      query,
+      mode: searchMode,
+      filters: {
+        class: classFilter,
+        damage: damageFilter,
+        focus: buildFocus
+      }
+    });
   };
 
-  const advancedExamples = [
-    'grenade -warlock',
-    '"auto reload" solar',
-    'super energy -pvp',
-    '"never reload" -exotic',
-    'invisibility "void hunter"'
+  const quickSearchOptions = [
+    { label: 'Grenade Spam', query: 'grenade energy constant', icon: '💥' },
+    { label: 'Invisibility', query: 'invisible stealth void hunter', icon: '👻' },
+    { label: 'Healing Support', query: 'healing well of radiance solar', icon: '💚' },
+    { label: 'Never Reload', query: 'auto loading holster reload', icon: '🔄' },
+    { label: 'Super Spam', query: 'super energy orbs intellect', icon: '⚡' },
+    { label: 'Tank Build', query: 'resilience resist defensive', icon: '🛡️' },
+    { label: 'Melee Focus', query: 'melee strength punch', icon: '👊' },
+    { label: 'Speed Build', query: 'mobility movement speed', icon: '💨' }
+  ];
+
+  const buildFocusOptions = [
+    { value: 'any', label: 'Any Focus' },
+    { value: 'pve', label: 'PvE Content' },
+    { value: 'pvp', label: 'PvP/Crucible' },
+    { value: 'raid', label: 'Raids' },
+    { value: 'dungeon', label: 'Dungeons' },
+    { value: 'nightfall', label: 'Nightfalls' },
+    { value: 'solo', label: 'Solo Content' },
+    { value: 'endgame', label: 'Endgame' }
   ];
 
   return (
     <div style={{
-      background: 'rgba(255, 255, 255, 0.1)',
+      background: 'linear-gradient(135deg, rgba(30, 30, 46, 0.95), rgba(22, 33, 62, 0.95))',
       backdropFilter: 'blur(10px)',
-      borderRadius: '15px',
-      padding: '25px',
-      marginBottom: '30px',
-      border: '1px solid rgba(244, 167, 36, 0.2)'
+      borderRadius: '12px',
+      padding: '24px',
+      marginBottom: '20px',
+      border: '1px solid rgba(79, 172, 254, 0.2)',
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
     }}>
-      <h2 style={{
-        color: '#f4a724',
-        marginBottom: '15px',
-        fontSize: '1.3rem'
-      }}>What's Your Playstyle?</h2>
-      
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-          placeholder='e.g., "constant grenades" -warlock, super energy, "never reload" solar'
-          style={{
-            width: '100%',
-            padding: '15px',
-            background: 'rgba(0, 0, 0, 0.3)',
-            border: '2px solid rgba(244, 167, 36, 0.3)',
-            borderRadius: '10px',
-            color: '#e6e6e6',
-            fontSize: '1rem',
-            transition: 'all 0.3s ease',
-            marginBottom: '15px'
-          }}
-          onFocus={(e) => {
-            e.target.style.borderColor = '#f4a724';
-            e.target.style.boxShadow = '0 0 15px rgba(244, 167, 36, 0.3)';
-          }}
-          onBlur={(e) => {
-            e.target.style.borderColor = 'rgba(244, 167, 36, 0.3)';
-            e.target.style.boxShadow = 'none';
-          }}
-        />
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '20px'
+      }}>
+        <h2 style={{
+          color: '#4FACFE',
+          fontSize: '1.4rem',
+          margin: 0,
+          fontWeight: '600'
+        }}>
+          🔮 Build Creator
+        </h2>
+        
+        {playerData && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#B8BCC8',
+            fontSize: '0.9rem'
+          }}>
+            <span>👤</span>
+            <span>{playerData.displayName}</span>
+            <span style={{
+              background: 'rgba(79, 172, 254, 0.2)',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '0.8rem'
+            }}>
+              {playerData.itemCount} items
+            </span>
+          </div>
+        )}
+      </div>
 
-        {/* Advanced Search Help Toggle */}
-        <div style={{ marginBottom: '15px' }}>
+      {/* Search Mode Selector */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '16px',
+        background: 'rgba(0, 0, 0, 0.2)',
+        borderRadius: '8px',
+        padding: '4px'
+      }}>
+        {[
+          { value: 'builds', label: '🎯 Find Builds', desc: 'Complete build recommendations' },
+          { value: 'items', label: '🔍 Search Items', desc: 'Individual components' },
+          ...(playerData ? [{ value: 'player', label: '🎒 My Inventory', desc: 'Your owned items only' }] : [])
+        ].map((mode) => (
           <button
-            type="button"
-            onClick={() => setShowAdvancedHelp(!showAdvancedHelp)}
+            key={mode.value}
+            onClick={() => setSearchMode(mode.value)}
             style={{
-              background: 'none',
-              border: '1px solid rgba(244, 167, 36, 0.3)',
-              color: '#f4a724',
-              padding: '5px 10px',
-              borderRadius: '5px',
+              flex: 1,
+              background: searchMode === mode.value ? 
+                'linear-gradient(135deg, #4FACFE, #00F2FE)' : 
+                'transparent',
+              color: searchMode === mode.value ? '#1a1a2e' : '#B8BCC8',
+              border: 'none',
+              padding: '12px 16px',
+              borderRadius: '6px',
               cursor: 'pointer',
-              fontSize: '0.8rem',
+              transition: 'all 0.3s ease',
+              fontSize: '0.9rem',
+              fontWeight: searchMode === mode.value ? '600' : '400'
+            }}
+            onMouseEnter={(e) => {
+              if (searchMode !== mode.value) {
+                e.target.style.background = 'rgba(79, 172, 254, 0.1)';
+                e.target.style.color = '#4FACFE';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (searchMode !== mode.value) {
+                e.target.style.background = 'transparent';
+                e.target.style.color = '#B8BCC8';
+              }
+            }}
+          >
+            <div>{mode.label}</div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              opacity: 0.8,
+              marginTop: '2px'
+            }}>
+              {mode.desc}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Main Search Input */}
+      <form onSubmit={handleSubmit} style={{ marginBottom: '20px' }}>
+        <div style={{ position: 'relative' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={
+              searchMode === 'builds' ? 'Describe your ideal playstyle (e.g., "constant grenades", "invisibility hunter")' :
+              searchMode === 'items' ? 'Search for items, mods, or abilities' :
+              'Search your inventory for builds you can make'
+            }
+            style={{
+              width: '100%',
+              padding: '16px 20px',
+              background: 'rgba(0, 0, 0, 0.3)',
+              border: '2px solid rgba(79, 172, 254, 0.3)',
+              borderRadius: '10px',
+              color: '#E5E7EB',
+              fontSize: '1rem',
+              outline: 'none',
+              transition: 'all 0.3s ease'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#4FACFE';
+              e.target.style.boxShadow = '0 0 20px rgba(79, 172, 254, 0.3)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'rgba(79, 172, 254, 0.3)';
+              e.target.style.boxShadow = 'none';
+            }}
+          />
+          
+          <button
+            type="submit"
+            disabled={!searchQuery.trim() && buildFocus === 'any' || isLoading}
+            style={{
+              position: 'absolute',
+              right: '8px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'linear-gradient(135deg, #4FACFE, #00F2FE)',
+              color: '#1a1a2e',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: (!searchQuery.trim() && buildFocus === 'any') || isLoading ? 'not-allowed' : 'pointer',
+              opacity: (!searchQuery.trim() && buildFocus === 'any') || isLoading ? 0.5 : 1,
+              fontSize: '0.9rem',
+              fontWeight: '600',
               transition: 'all 0.3s ease'
             }}
             onMouseEnter={(e) => {
-              e.target.style.borderColor = '#f4a724';
-              e.target.style.background = 'rgba(244, 167, 36, 0.1)';
+              if (!isLoading && (searchQuery.trim() || buildFocus !== 'any')) {
+                e.target.style.transform = 'translateY(-50%) scale(1.05)';
+              }
             }}
             onMouseLeave={(e) => {
-              e.target.style.borderColor = 'rgba(244, 167, 36, 0.3)';
-              e.target.style.background = 'none';
+              e.target.style.transform = 'translateY(-50%) scale(1)';
             }}
           >
-            {showAdvancedHelp ? '▼' : '▶'} Advanced Search Tips
+            {isLoading ? '🔄' : '🔍'}
           </button>
         </div>
+      </form>
 
-        {/* Advanced Search Help */}
-        {showAdvancedHelp && (
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.2)',
-            borderRadius: '8px',
-            padding: '15px',
-            marginBottom: '15px',
-            border: '1px solid rgba(244, 167, 36, 0.2)'
-          }}>
-            <h4 style={{ color: '#f4a724', marginBottom: '10px', fontSize: '1rem' }}>
-              Advanced Search Syntax:
-            </h4>
-            <div style={{ color: '#b3b3b3', fontSize: '0.9rem', lineHeight: '1.4' }}>
-              <div style={{ marginBottom: '8px' }}>
-                <strong style={{ color: '#e6e6e6' }}>Exclude terms:</strong> Use <code style={{ background: 'rgba(244, 167, 36, 0.2)', padding: '2px 4px', borderRadius: '3px' }}>-term</code>
-              </div>
-              <div style={{ marginBottom: '8px' }}>
-                <strong style={{ color: '#e6e6e6' }}>Exact phrases:</strong> Use <code style={{ background: 'rgba(244, 167, 36, 0.2)', padding: '2px 4px', borderRadius: '3px' }}>"exact phrase"</code>
-              </div>
-              <div style={{ marginBottom: '10px' }}>
-                <strong style={{ color: '#e6e6e6' }}>Examples:</strong>
-              </div>
-              {advancedExamples.map((example, index) => (
-                <div
-                  key={index}
-                  onClick={() => setKeywords(example)}
-                  style={{
-                    background: 'rgba(244, 167, 36, 0.1)',
-                    padding: '5px 8px',
-                    borderRadius: '4px',
-                    margin: '2px 0',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s ease',
-                    fontFamily: 'monospace'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = 'rgba(244, 167, 36, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = 'rgba(244, 167, 36, 0.1)';
-                  }}
-                >
-                  {example}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+      {/* Quick Search Options */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{
+          color: '#B8BCC8',
+          fontSize: '0.9rem',
+          marginBottom: '12px',
+          fontWeight: '500'
+        }}>
+          Quick Search:
+        </div>
         
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
-          {['constant grenades', 'never reload', 'fast super', 'invisibility', 'healing', 'melee damage'].map((suggestion) => (
-            <div
-              key={suggestion}
-              onClick={() => addSuggestion(suggestion)}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '8px'
+        }}>
+          {quickSearchOptions.map((option) => (
+            <button
+              key={option.query}
+              onClick={() => handleQuickSearch(option.query)}
               style={{
-                background: 'rgba(244, 167, 36, 0.2)',
-                color: '#f4a724',
-                padding: '8px 15px',
-                borderRadius: '25px',
+                background: 'rgba(79, 172, 254, 0.1)',
+                border: '1px solid rgba(79, 172, 254, 0.2)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                color: '#E5E7EB',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
-                border: '1px solid rgba(244, 167, 36, 0.3)',
-                fontSize: '0.9rem'
+                fontSize: '0.9rem',
+                textAlign: 'left'
               }}
               onMouseEnter={(e) => {
-                e.target.style.background = 'rgba(244, 167, 36, 0.4)';
+                e.target.style.background = 'rgba(79, 172, 254, 0.2)';
+                e.target.style.borderColor = '#4FACFE';
                 e.target.style.transform = 'translateY(-2px)';
               }}
               onMouseLeave={(e) => {
-                e.target.style.background = 'rgba(244, 167, 36, 0.2)';
+                e.target.style.background = 'rgba(79, 172, 254, 0.1)';
+                e.target.style.borderColor = 'rgba(79, 172, 254, 0.2)';
                 e.target.style.transform = 'translateY(0)';
               }}
             >
-              🔥 {suggestion.charAt(0).toUpperCase() + suggestion.slice(1)}
-            </div>
+              <span style={{ marginRight: '8px' }}>{option.icon}</span>
+              {option.label}
+            </button>
           ))}
         </div>
-        
-        <button
-          type="submit"
-          disabled={!keywords.trim() || isLoading}
-          style={{
-            width: '100%',
-            padding: '15px',
-            background: 'linear-gradient(45deg, #f4a724, #ff8c00)',
-            color: '#000',
-            border: 'none',
-            borderRadius: '10px',
-            fontSize: '1.1rem',
-            fontWeight: 'bold',
-            cursor: keywords.trim() && !isLoading ? 'pointer' : 'not-allowed',
-            opacity: keywords.trim() && !isLoading ? 1 : 0.5,
-            transition: 'all 0.3s ease'
-          }}
-          onMouseEnter={(e) => {
-            if (keywords.trim() && !isLoading) {
-              e.target.style.background = 'linear-gradient(45deg, #ff8c00, #f4a724)';
-              e.target.style.transform = 'translateY(-2px)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (keywords.trim() && !isLoading) {
-              e.target.style.background = 'linear-gradient(45deg, #f4a724, #ff8c00)';
-              e.target.style.transform = 'translateY(0)';
-            }
-          }}
-        >
-          {isLoading ? 'Casting...' : 'Cast My Perfect Build'}
-        </button>
-      </form>
+      </div>
+
+      {/* Advanced Options Toggle */}
+      <button
+        onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+        style={{
+          background: 'none',
+          border: '1px solid rgba(79, 172, 254, 0.3)',
+          color: '#4FACFE',
+          padding: '8px 16px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '0.9rem',
+          marginBottom: showAdvancedOptions ? '16px' : '0',
+          transition: 'all 0.3s ease'
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.borderColor = '#4FACFE';
+          e.target.style.background = 'rgba(79, 172, 254, 0.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.borderColor = 'rgba(79, 172, 254, 0.3)';
+          e.target.style.background = 'none';
+        }}
+      >
+        {showAdvancedOptions ? '▼' : '▶'} Advanced Filters
+      </button>
+
+      {/* Advanced Options */}
+      {showAdvancedOptions && (
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.2)',
+          borderRadius: '8px',
+          padding: '16px',
+          border: '1px solid rgba(79, 172, 254, 0.2)'
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '16px'
+          }}>
+            {/* Class Filter */}
+            <div>
+              <label style={{
+                display: 'block',
+                color: '#B8BCC8',
+                fontSize: '0.9rem',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                Class:
+              </label>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(79, 172, 254, 0.3)',
+                  borderRadius: '6px',
+                  color: '#E5E7EB',
+                  padding: '8px 12px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <option value="any">Any Class</option>
+                <option value="titan">🛡️ Titan</option>
+                <option value="hunter">🏹 Hunter</option>
+                <option value="warlock">✨ Warlock</option>
+              </select>
+            </div>
+
+            {/* Damage Type Filter */}
+            <div>
+              <label style={{
+                display: 'block',
+                color: '#B8BCC8',
+                fontSize: '0.9rem',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                Element:
+              </label>
+              <select
+                value={damageFilter}
+                onChange={(e) => setDamageFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(79, 172, 254, 0.3)',
+                  borderRadius: '6px',
+                  color: '#E5E7EB',
+                  padding: '8px 12px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <option value="any">Any Element</option>
+                <option value="solar">🔥 Solar</option>
+                <option value="arc">⚡ Arc</option>
+                <option value="void">🌌 Void</option>
+                <option value="stasis">❄️ Stasis</option>
+                <option value="strand">🕸️ Strand</option>
+              </select>
+            </div>
+
+            {/* Build Focus */}
+            <div>
+              <label style={{
+                display: 'block',
+                color: '#B8BCC8',
+                fontSize: '0.9rem',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                Activity Focus:
+              </label>
+              <select
+                value={buildFocus}
+                onChange={(e) => setBuildFocus(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(79, 172, 254, 0.3)',
+                  borderRadius: '6px',
+                  color: '#E5E7EB',
+                  padding: '8px 12px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                {buildFocusOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Search Tips */}
+          <div style={{
+            marginTop: '16px',
+            padding: '12px',
+            background: 'rgba(79, 172, 254, 0.1)',
+            borderRadius: '6px',
+            border: '1px solid rgba(79, 172, 254, 0.2)'
+          }}>
+            <div style={{
+              color: '#4FACFE',
+              fontSize: '0.9rem',
+              fontWeight: '500',
+              marginBottom: '8px'
+            }}>
+              💡 Search Tips:
+            </div>
+            <div style={{
+              color: '#B8BCC8',
+              fontSize: '0.8rem',
+              lineHeight: '1.4'
+            }}>
+              • Use quotes for exact phrases: "never reload"<br/>
+              • Exclude terms with minus: grenade -warlock<br/>
+              • Combine concepts: "invisible hunter" void<br/>
+              • Try exotic names: "Heart of Inmost Light"
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
