@@ -10,8 +10,7 @@ const options = {
         url: 'https://www.bungie.net/en/oauth/authorize',
         params: {
           response_type: 'code',
-          client_id: process.env.BUNGIE_CLIENT_ID,
-          scope: 'ReadUserData ReadUserInfo'
+          client_id: process.env.BUNGIE_CLIENT_ID
         }
       },
       token: 'https://www.bungie.net/platform/app/oauth/token/',
