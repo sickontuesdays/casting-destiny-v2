@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
   try {
     // Exchange code for tokens
-    const tokenResponse = await fetch('https://www.bungie.net/platform/app/oauth/token/', {
+    const tokenResponse = await fetch('https://www.bungie.net/Platform/app/oauth/token/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -27,26 +27,31 @@ export default async function handler(req, res) {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text()
-      console.error('Token exchange failed:', errorText)
+      console.error('Token exchange failed:', tokenResponse.status, errorText)
       return res.redirect('/?error=token_exchange_failed')
     }
 
     const tokens = await tokenResponse.json()
+    console.log('Token exchange successful, access_token length:', tokens.access_token?.length)
 
     // Get user info
-    const userResponse = await fetch('https://www.bungie.net/platform/User/GetCurrentUser/', {
+    const userResponse = await fetch('https://www.bungie.net/Platform/User/GetCurrentUser/', {
       headers: {
         'Authorization': `Bearer ${tokens.access_token}`,
         'X-API-Key': process.env.BUNGIE_API_KEY
       }
     })
 
+    console.log('User info response status:', userResponse.status)
+    
     if (!userResponse.ok) {
-      console.error('User info request failed:', userResponse.status)
+      const errorText = await userResponse.text()
+      console.error('User info request failed:', userResponse.status, errorText)
       return res.redirect('/?error=user_info_failed')
     }
 
     const userData = await userResponse.json()
+    console.log('User data received, ErrorCode:', userData.ErrorCode)
     
     if (userData.ErrorCode !== 1) {
       console.error('Bungie API Error:', userData.Message)
