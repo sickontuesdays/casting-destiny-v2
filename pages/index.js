@@ -13,10 +13,24 @@ export default function Home() {
   const [buildRequest, setBuildRequest] = useState('')
   const [useInventoryOnly, setUseInventoryOnly] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
+  const [authError, setAuthError] = useState(null)
 
   useEffect(() => {
     checkSession()
+    checkForAuthError()
   }, [])
+
+  const checkForAuthError = () => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const error = urlParams.get('error')
+      if (error) {
+        setAuthError(error)
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    }
+  }
 
   const checkSession = async () => {
     try {
@@ -26,7 +40,7 @@ export default function Home() {
       
       if (sessionCookie) {
         const sessionData = sessionCookie.split('=')[1]
-        const decodedSession = JSON.parse(Buffer.from(sessionData, 'base64').toString())
+        const decodedSession = JSON.parse(atob(sessionData))
         
         // Check if session is still valid
         if (decodedSession.expiresAt > Date.now()) {
@@ -66,6 +80,22 @@ export default function Home() {
         <div className="login-container">
           <h1>Casting Destiny v2</h1>
           <p>Create the perfect Destiny 2 build for any situation</p>
+          
+          {authError && (
+            <div className="error-message" style={{
+              background: 'rgba(231, 111, 81, 0.2)',
+              border: '1px solid #e76f51',
+              color: '#e76f51',
+              padding: '1rem',
+              borderRadius: '0.5rem',
+              marginBottom: '1rem'
+            }}>
+              Login Error: {authError}
+              <br />
+              <small>Check Vercel logs for more details</small>
+            </div>
+          )}
+          
           <button 
             className="bungie-login-btn"
             onClick={handleLogin}
