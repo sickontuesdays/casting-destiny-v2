@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth'
 
-export default NextAuth({
+const options = {
   providers: [
     {
       id: 'bungie',
@@ -17,7 +17,7 @@ export default NextAuth({
       token: 'https://www.bungie.net/platform/app/oauth/token/',
       userinfo: {
         url: 'https://www.bungie.net/platform/User/GetCurrentUser/',
-        async request({ tokens, client }) {
+        async request({ tokens }) {
           const response = await fetch('https://www.bungie.net/platform/User/GetCurrentUser/', {
             headers: {
               'Authorization': `Bearer ${tokens.access_token}`,
@@ -25,6 +25,11 @@ export default NextAuth({
             }
           })
           const data = await response.json()
+          
+          if (data.ErrorCode !== 1) {
+            throw new Error(`Bungie API Error: ${data.Message}`)
+          }
+          
           return data.Response
         }
       },
@@ -33,7 +38,7 @@ export default NextAuth({
       profile(profile) {
         return {
           id: profile.membershipId,
-          name: profile.displayName,
+          name: profile.displayName || profile.bungieGlobalDisplayName,
           bungieMembershipId: profile.membershipId,
           destinyMemberships: profile.destinyMemberships || [],
           bungieGlobalDisplayName: profile.bungieGlobalDisplayName,
@@ -67,5 +72,8 @@ export default NextAuth({
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60 // 30 days
-  }
-})
+  },
+  debug: process.env.NODE_ENV === 'development'
+}
+
+export default NextAuth(options)
