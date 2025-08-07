@@ -1,28 +1,28 @@
 {
-  "name": "casting-destiny",
+  "name": "casting-destiny-v2",
   "version": "1.0.0",
+  "description": "Destiny 2 Build Crafting Tool",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run download-manifest && next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "download-manifest": "node scripts/download-manifest.js",
-    "download-manifest:force": "FORCE_UPDATE=true node scripts/download-manifest.js",
-    "check-manifest": "node -e \"const fs = require('fs'); const path = require('path'); const file = path.join('data', 'manifest-info.json'); if (fs.existsSync(file)) { const data = JSON.parse(fs.readFileSync(file, 'utf8')); console.log('Manifest Version:', data.version); console.log('Item Count:', data.itemCount); console.log('Downloaded:', new Date(data.downloadedAt).toLocaleString()); } else { console.log('No manifest data found'); }\""
+    "lint": "next lint"
   },
   "dependencies": {
-    "next": "14.0.0",
-    "react": "18.2.0",
-    "react-dom": "18.2.0", 
+    "next": "^14.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "next-auth": "^4.24.0",
     "axios": "^1.6.0",
-    "jose": "^5.1.3"
+    "node-cron": "^3.0.3",
+    "sqlite3": "^5.1.6",
+    "better-sqlite3": "^9.2.2",
+    "lodash": "^4.17.21",
+    "date-fns": "^2.30.0"
   },
   "devDependencies": {
     "eslint": "^8.0.0",
-    "eslint-config-next": "14.0.0",
-    "tailwindcss": "^3.3.0",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.31"
+    "eslint-config-next": "^14.0.0"
   }
 }
