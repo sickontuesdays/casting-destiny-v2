@@ -1,5 +1,4 @@
-import { useSession, signIn } from 'next-auth/react'
-import { useState, useContext } from 'react'
+import { useState, useContext, useEffect } from 'react'
 import { AppContext } from './_app'
 import BuildCreator from '../components/BuildCreator'
 import NaturalLanguageInput from '../components/NaturalLanguageInput'
@@ -7,14 +6,52 @@ import BuildDisplay from '../components/BuildDisplay'
 import UserInventory from '../components/UserInventory'
 
 export default function Home() {
-  const { data: session, status } = useSession()
   const { manifest, loading } = useContext(AppContext)
+  const [session, setSession] = useState(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
   const [currentBuild, setCurrentBuild] = useState(null)
   const [buildRequest, setBuildRequest] = useState('')
   const [useInventoryOnly, setUseInventoryOnly] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
 
-  if (status === 'loading' || loading) {
+  useEffect(() => {
+    checkSession()
+  }, [])
+
+  const checkSession = async () => {
+    try {
+      // Check for custom session cookie
+      const cookies = document.cookie.split(';')
+      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('bungie_session='))
+      
+      if (sessionCookie) {
+        const sessionData = sessionCookie.split('=')[1]
+        const decodedSession = JSON.parse(Buffer.from(sessionData, 'base64').toString())
+        
+        // Check if session is still valid
+        if (decodedSession.expiresAt > Date.now()) {
+          setSession(decodedSession)
+        }
+      }
+    } catch (error) {
+      console.error('Error checking session:', error)
+    } finally {
+      setSessionLoading(false)
+    }
+  }
+
+  const handleLogin = () => {
+    window.location.href = '/api/auth/bungie-login'
+  }
+
+  const handleLogout = () => {
+    // Clear session cookie
+    document.cookie = 'bungie_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+    setSession(null)
+    setCurrentBuild(null)
+  }
+
+  if (sessionLoading || loading) {
     return (
       <div className="loading-screen">
         <div className="destiny-loader"></div>
@@ -31,7 +68,7 @@ export default function Home() {
           <p>Create the perfect Destiny 2 build for any situation</p>
           <button 
             className="bungie-login-btn"
-            onClick={() => signIn('bungie')}
+            onClick={handleLogin}
           >
             Sign in with Bungie.net
           </button>
@@ -52,6 +89,15 @@ export default function Home() {
   return (
     <div className="home-container">
       <div className="main-content">
+        <div className="user-header">
+          <div className="user-info">
+            <span>Welcome, {session.user.name}!</span>
+          </div>
+          <button className="logout-btn" onClick={handleLogout}>
+            Sign Out
+          </button>
+        </div>
+
         {!currentBuild ? (
           <div className="build-creator-section">
             <div className="header-section">
@@ -66,6 +112,7 @@ export default function Home() {
                 onSubmit={handleBuildGenerated}
                 lockedExotic={lockedExotic}
                 useInventoryOnly={useInventoryOnly}
+                userSession={session}
               />
               
               <div className="build-options">
@@ -97,7 +144,7 @@ export default function Home() {
       </div>
 
       <div className="sidebar">
-        <UserInventory />
+        <UserInventory session={session} />
       </div>
     </div>
   )
