@@ -1,4 +1,5 @@
 import { useState, useContext } from 'react'
+import { useSession } from 'next-auth/react'
 import { AppContext } from '../pages/_app'
 import { parseLanguageInput } from '../lib/language-parser'
 import { generateBuild } from '../lib/build-scorer'
@@ -8,9 +9,9 @@ export default function NaturalLanguageInput({
   onChange, 
   onSubmit, 
   lockedExotic, 
-  useInventoryOnly,
-  userSession
+  useInventoryOnly 
 }) {
+  const { data: session } = useSession()
   const { manifest } = useContext(AppContext)
   const [isGenerating, setIsGenerating] = useState(false)
   const [suggestions, setSuggestions] = useState([])
@@ -68,7 +69,7 @@ export default function NaturalLanguageInput({
         request: parsedRequest,
         lockedExotic,
         useInventoryOnly,
-        userSession: userSession,
+        userSession: session,
         manifest
       })
 

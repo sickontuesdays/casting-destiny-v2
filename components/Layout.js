@@ -1,8 +1,10 @@
+import { useSession, signOut } from 'next-auth/react'
 import { useState } from 'react'
 import Link from 'next/link'
 import FriendSystem from './FriendSystem'
 
 export default function Layout({ children }) {
+  const { data: session } = useSession()
   const [showFriends, setShowFriends] = useState(false)
 
   return (
@@ -15,20 +17,37 @@ export default function Layout({ children }) {
             </Link>
           </div>
           
-          <nav className="main-nav">
-            <Link href="/" className="nav-link">
-              Build Creator
-            </Link>
-            <button 
-              className="nav-link friends-toggle"
-              onClick={() => setShowFriends(!showFriends)}
-            >
-              Friends
-            </button>
-            <Link href="/admin" className="nav-link admin-link">
-              Admin
-            </Link>
-          </nav>
+          {session && (
+            <nav className="main-nav">
+              <Link href="/" className="nav-link">
+                Build Creator
+              </Link>
+              <button 
+                className="nav-link friends-toggle"
+                onClick={() => setShowFriends(!showFriends)}
+              >
+                Friends
+              </button>
+              <Link href="/admin" className="nav-link admin-link">
+                Admin
+              </Link>
+            </nav>
+          )}
+
+          {session && (
+            <div className="user-section">
+              <div className="user-info">
+                <span className="username">{session.user.name}</span>
+                <span className="membership-id">#{session.bungieMembershipId}</span>
+              </div>
+              <button 
+                className="signout-btn"
+                onClick={() => signOut()}
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -36,7 +55,7 @@ export default function Layout({ children }) {
         {children}
       </main>
 
-      {showFriends && (
+      {session && showFriends && (
         <div className="friends-overlay">
           <div className="friends-panel">
             <div className="friends-header">

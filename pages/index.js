@@ -1,4 +1,5 @@
-import { useState, useContext, useEffect } from 'react'
+import { useSession, signIn } from 'next-auth/react'
+import { useState, useContext } from 'react'
 import { AppContext } from './_app'
 import BuildCreator from '../components/BuildCreator'
 import NaturalLanguageInput from '../components/NaturalLanguageInput'
@@ -6,66 +7,14 @@ import BuildDisplay from '../components/BuildDisplay'
 import UserInventory from '../components/UserInventory'
 
 export default function Home() {
+  const { data: session, status } = useSession()
   const { manifest, loading } = useContext(AppContext)
-  const [session, setSession] = useState(null)
-  const [sessionLoading, setSessionLoading] = useState(true)
   const [currentBuild, setCurrentBuild] = useState(null)
   const [buildRequest, setBuildRequest] = useState('')
   const [useInventoryOnly, setUseInventoryOnly] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
-  const [authError, setAuthError] = useState(null)
 
-  useEffect(() => {
-    checkSession()
-    checkForAuthError()
-  }, [])
-
-  const checkForAuthError = () => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search)
-      const error = urlParams.get('error')
-      if (error) {
-        setAuthError(error)
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname)
-      }
-    }
-  }
-
-  const checkSession = async () => {
-    try {
-      // Check for custom session cookie
-      const cookies = document.cookie.split(';')
-      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('bungie_session='))
-      
-      if (sessionCookie) {
-        const sessionData = sessionCookie.split('=')[1]
-        const decodedSession = JSON.parse(atob(sessionData))
-        
-        // Check if session is still valid
-        if (decodedSession.expiresAt > Date.now()) {
-          setSession(decodedSession)
-        }
-      }
-    } catch (error) {
-      console.error('Error checking session:', error)
-    } finally {
-      setSessionLoading(false)
-    }
-  }
-
-  const handleLogin = () => {
-    window.location.href = '/api/auth/bungie-login'
-  }
-
-  const handleLogout = () => {
-    // Clear session cookie
-    document.cookie = 'bungie_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
-    setSession(null)
-    setCurrentBuild(null)
-  }
-
-  if (sessionLoading || loading) {
+  if (status === 'loading' || loading) {
     return (
       <div className="loading-screen">
         <div className="destiny-loader"></div>
@@ -80,25 +29,9 @@ export default function Home() {
         <div className="login-container">
           <h1>Casting Destiny v2</h1>
           <p>Create the perfect Destiny 2 build for any situation</p>
-          
-          {authError && (
-            <div className="error-message" style={{
-              background: 'rgba(231, 111, 81, 0.2)',
-              border: '1px solid #e76f51',
-              color: '#e76f51',
-              padding: '1rem',
-              borderRadius: '0.5rem',
-              marginBottom: '1rem'
-            }}>
-              Login Error: {authError}
-              <br />
-              <small>Check Vercel logs for more details</small>
-            </div>
-          )}
-          
           <button 
             className="bungie-login-btn"
-            onClick={handleLogin}
+            onClick={() => signIn('bungie')}
           >
             Sign in with Bungie.net
           </button>
@@ -119,15 +52,6 @@ export default function Home() {
   return (
     <div className="home-container">
       <div className="main-content">
-        <div className="user-header">
-          <div className="user-info">
-            <span>Welcome, {session.user.name}!</span>
-          </div>
-          <button className="logout-btn" onClick={handleLogout}>
-            Sign Out
-          </button>
-        </div>
-
         {!currentBuild ? (
           <div className="build-creator-section">
             <div className="header-section">
@@ -142,7 +66,6 @@ export default function Home() {
                 onSubmit={handleBuildGenerated}
                 lockedExotic={lockedExotic}
                 useInventoryOnly={useInventoryOnly}
-                userSession={session}
               />
               
               <div className="build-options">
@@ -174,7 +97,7 @@ export default function Home() {
       </div>
 
       <div className="sidebar">
-        <UserInventory session={session} />
+        <UserInventory />
       </div>
     </div>
   )

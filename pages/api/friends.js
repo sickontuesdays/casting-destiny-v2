@@ -1,30 +1,8 @@
+import { getSession } from 'next-auth/react'
 import { getBungieFriends, getClanMembers } from '../../lib/bungie-api'
 
-// Helper function to get session from cookie
-function getSessionFromCookie(req) {
-  try {
-    const cookies = req.headers.cookie || ''
-    const sessionCookie = cookies.split(';').find(cookie => cookie.trim().startsWith('bungie_session='))
-    
-    if (!sessionCookie) return null
-    
-    const sessionData = sessionCookie.split('=')[1]
-    const decodedSession = JSON.parse(Buffer.from(sessionData, 'base64').toString())
-    
-    // Check if session is still valid
-    if (decodedSession.expiresAt > Date.now()) {
-      return decodedSession
-    }
-    
-    return null
-  } catch (error) {
-    console.error('Error parsing session cookie:', error)
-    return null
-  }
-}
-
 export default async function handler(req, res) {
-  const session = getSessionFromCookie(req)
+  const session = await getSession({ req })
   
   if (!session) {
     return res.status(401).json({ error: 'Not authenticated' })
@@ -36,17 +14,17 @@ export default async function handler(req, res) {
       
       if (type === 'destiny-friends') {
         // Get Destiny 2 friends from Bungie API
-        const friends = await getBungieFriends(session.accessToken, session.user.bungieMembershipId)
+        const friends = await getBungieFriends(session.accessToken, session.bungieMembershipId)
         res.status(200).json(friends)
       } else if (type === 'clan-members') {
         // Get clan members from Bungie API
-        const clanMembers = await getClanMembers(session.accessToken, session.user.destinyMemberships)
+        const clanMembers = await getClanMembers(session.accessToken, session.destinyMemberships)
         res.status(200).json(clanMembers)
       } else {
         // Get all friends (combined)
         const [friends, clanMembers] = await Promise.all([
-          getBungieFriends(session.accessToken, session.user.bungieMembershipId),
-          getClanMembers(session.accessToken, session.user.destinyMemberships)
+          getBungieFriends(session.accessToken, session.bungieMembershipId),
+          getClanMembers(session.accessToken, session.destinyMemberships)
         ])
         
         // Combine and deduplicate

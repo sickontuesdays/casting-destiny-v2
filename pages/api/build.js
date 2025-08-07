@@ -1,3 +1,4 @@
+import { getSession } from 'next-auth/react'
 import fs from 'fs'
 import path from 'path'
 
@@ -15,37 +16,14 @@ function ensureBuildsDir() {
   }
 }
 
-// Helper function to get session from cookie
-function getSessionFromCookie(req) {
-  try {
-    const cookies = req.headers.cookie || ''
-    const sessionCookie = cookies.split(';').find(cookie => cookie.trim().startsWith('bungie_session='))
-    
-    if (!sessionCookie) return null
-    
-    const sessionData = sessionCookie.split('=')[1]
-    const decodedSession = JSON.parse(Buffer.from(sessionData, 'base64').toString())
-    
-    // Check if session is still valid
-    if (decodedSession.expiresAt > Date.now()) {
-      return decodedSession
-    }
-    
-    return null
-  } catch (error) {
-    console.error('Error parsing session cookie:', error)
-    return null
-  }
-}
-
 export default async function handler(req, res) {
-  const session = getSessionFromCookie(req)
+  const session = await getSession({ req })
   
   if (!session) {
     return res.status(401).json({ error: 'Not authenticated' })
   }
 
-  const userId = session.user.bungieMembershipId
+  const userId = session.bungieMembershipId
   const userBuildsFile = path.join(BUILDS_DIR, `${userId}.json`)
 
   if (req.method === 'GET') {

@@ -1,40 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import AdminPanel from '../components/AdminPanel'
 
 export default function Admin() {
-  const [session, setSession] = useState(null)
-  const [sessionLoading, setSessionLoading] = useState(true)
+  const { data: session } = useSession()
   const [isAuthorized, setIsAuthorized] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    checkSession()
-  }, [])
-
-  const checkSession = () => {
-    try {
-      // Check for custom session cookie
-      if (typeof window !== 'undefined') {
-        const cookies = document.cookie.split(';')
-        const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('bungie_session='))
-        
-        if (sessionCookie) {
-          const sessionData = sessionCookie.split('=')[1]
-          const decodedSession = JSON.parse(atob(sessionData))
-          
-          // Check if session is still valid
-          if (decodedSession.expiresAt > Date.now()) {
-            setSession(decodedSession)
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error checking session:', error)
-    } finally {
-      setSessionLoading(false)
-    }
-  }
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -56,25 +28,12 @@ export default function Admin() {
     }
   }
 
-  if (sessionLoading) {
-    return (
-      <div className="admin-login">
-        <div className="login-container">
-          <h1>Loading...</h1>
-        </div>
-      </div>
-    )
-  }
-
   if (!session) {
     return (
       <div className="admin-login">
         <div className="login-container">
           <h1>Admin Access</h1>
           <p>Please sign in with Bungie.net first</p>
-          <a href="/" className="bungie-login-btn">
-            Go to Login
-          </a>
         </div>
       </div>
     )
