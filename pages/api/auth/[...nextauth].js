@@ -10,8 +10,8 @@ export default NextAuth({
         url: "https://www.bungie.net/en/oauth/authorize",
         params: {
           response_type: "code",
-          client_id: process.env.BUNGIE_CLIENT_ID
-          // Explicitly NO scope parameter
+          client_id: process.env.BUNGIE_CLIENT_ID,
+          scope: "" // Explicitly empty scope
         }
       },
       token: {
