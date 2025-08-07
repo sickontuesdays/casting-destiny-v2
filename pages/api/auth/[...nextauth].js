@@ -6,6 +6,7 @@ const options = {
       id: 'bungie',
       name: 'Bungie',
       type: 'oauth',
+      version: '2.0',
       authorization: {
         url: 'https://www.bungie.net/en/oauth/authorize',
         params: {
@@ -13,7 +14,29 @@ const options = {
           client_id: process.env.BUNGIE_CLIENT_ID
         }
       },
-      token: 'https://www.bungie.net/platform/app/oauth/token/',
+      token: {
+        url: 'https://www.bungie.net/platform/app/oauth/token/',
+        async request(context) {
+          const response = await fetch('https://www.bungie.net/platform/app/oauth/token/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${Buffer.from(`${process.env.BUNGIE_CLIENT_ID}:${process.env.BUNGIE_CLIENT_SECRET}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: context.params.code,
+              client_id: process.env.BUNGIE_CLIENT_ID
+            })
+          })
+          
+          if (!response.ok) {
+            throw new Error(`Token request failed: ${response.statusText}`)
+          }
+          
+          return await response.json()
+        }
+      },
       userinfo: {
         url: 'https://www.bungie.net/platform/User/GetCurrentUser/',
         async request({ tokens }) {
@@ -23,6 +46,7 @@ const options = {
               'X-API-Key': process.env.BUNGIE_API_KEY
             }
           })
+          
           const data = await response.json()
           
           if (data.ErrorCode !== 1) {
@@ -32,8 +56,6 @@ const options = {
           return data.Response
         }
       },
-      clientId: process.env.BUNGIE_CLIENT_ID,
-      clientSecret: process.env.BUNGIE_CLIENT_SECRET,
       profile(profile) {
         return {
           id: profile.membershipId,
@@ -43,7 +65,10 @@ const options = {
           bungieGlobalDisplayName: profile.bungieGlobalDisplayName,
           bungieGlobalDisplayNameCode: profile.bungieGlobalDisplayNameCode
         }
-      }
+      },
+      clientId: process.env.BUNGIE_CLIENT_ID,
+      clientSecret: process.env.BUNGIE_CLIENT_SECRET,
+      checks: ['state']
     }
   ],
   callbacks: {
