@@ -6,8 +6,20 @@ export default NextAuth({
       id: "bungie",
       name: "Bungie",
       type: "oauth",
-      authorization: "https://www.bungie.net/en/oauth/authorize?response_type=code",
-      token: "https://www.bungie.net/Platform/app/oauth/token/",
+      authorization: {
+        url: "https://www.bungie.net/en/oauth/authorize",
+        params: {
+          response_type: "code",
+          client_id: process.env.BUNGIE_CLIENT_ID
+          // Explicitly NO scope parameter
+        }
+      },
+      token: {
+        url: "https://www.bungie.net/Platform/app/oauth/token/",
+        params: {
+          grant_type: "authorization_code"
+        }
+      },
       userinfo: {
         url: "https://www.bungie.net/Platform/User/GetCurrentUser/",
         async request({ tokens, provider }) {
@@ -44,6 +56,7 @@ export default NextAuth({
       },
       clientId: process.env.BUNGIE_CLIENT_ID,
       clientSecret: process.env.BUNGIE_CLIENT_SECRET,
+      checks: ["state"], // Only check state, not PKCE
       profile(profile) {
         console.log('=== PROFILE MAPPING ===')
         console.log('Profile membershipId:', profile.membershipId)
