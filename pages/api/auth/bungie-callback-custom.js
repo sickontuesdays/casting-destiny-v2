@@ -32,10 +32,16 @@ export default async function handler(req, res) {
     }
 
     const tokens = await tokenResponse.json()
-    console.log('Token exchange successful, access_token length:', tokens.access_token?.length)
+    console.log('Token exchange successful')
+    console.log('Access token exists:', !!tokens.access_token)
+    console.log('API Key exists:', !!process.env.BUNGIE_API_KEY)
 
-    // Get user info
-    const userResponse = await fetch('https://www.bungie.net/Platform/User/GetCurrentUser/', {
+    // Get user info - try the correct Bungie API endpoint
+    const userInfoUrl = 'https://www.bungie.net/Platform/User/GetCurrentUser/'
+    console.log('Attempting user info request to:', userInfoUrl)
+    
+    const userResponse = await fetch(userInfoUrl, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${tokens.access_token}`,
         'X-API-Key': process.env.BUNGIE_API_KEY
@@ -43,15 +49,23 @@ export default async function handler(req, res) {
     })
 
     console.log('User info response status:', userResponse.status)
+    console.log('User info response headers:', Object.fromEntries(userResponse.headers.entries()))
     
     if (!userResponse.ok) {
       const errorText = await userResponse.text()
       console.error('User info request failed:', userResponse.status, errorText)
+      console.error('Request headers sent:', {
+        'Authorization': `Bearer ${tokens.access_token?.substring(0, 10)}...`,
+        'X-API-Key': process.env.BUNGIE_API_KEY?.substring(0, 10) + '...'
+      })
       return res.redirect('/?error=user_info_failed')
     }
 
     const userData = await userResponse.json()
-    console.log('User data received, ErrorCode:', userData.ErrorCode)
+    console.log('User data received:', {
+      ErrorCode: userData.ErrorCode,
+      hasResponse: !!userData.Response
+    })
     
     if (userData.ErrorCode !== 1) {
       console.error('Bungie API Error:', userData.Message)
