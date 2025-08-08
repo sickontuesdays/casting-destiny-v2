@@ -20,12 +20,42 @@ export default NextAuth({
           grant_type: "authorization_code"
         }
       },
-      userinfo: "https://www.bungie.net/Platform/User/GetCurrentUser/",
+      userinfo: {
+        url: "https://www.bungie.net/Platform/User/GetCurrentUser/",
+        async request({ tokens, provider }) {
+          console.log('=== CUSTOM USERINFO REQUEST ===')
+          console.log('Has access token:', !!tokens.access_token)
+          console.log('API key exists:', !!process.env.BUNGIE_API_KEY)
+          
+          const response = await fetch("https://www.bungie.net/Platform/User/GetCurrentUser/", {
+            headers: {
+              'Authorization': `Bearer ${tokens.access_token}`,
+              'X-API-Key': process.env.BUNGIE_API_KEY
+            }
+          })
+          
+          console.log('Userinfo response status:', response.status)
+          
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error('Userinfo request failed:', response.status, errorText)
+            throw new Error(`Userinfo request failed: ${response.status}`)
+          }
+          
+          const data = await response.json()
+          console.log('Bungie API response ErrorCode:', data.ErrorCode)
+          
+          if (data.ErrorCode !== 1) {
+            console.error('Bungie API Error:', data.Message)
+            throw new Error(`Bungie API Error: ${data.Message}`)
+          }
+          
+          console.log('Userinfo request successful')
+          return data.Response
+        }
+      },
       clientId: process.env.BUNGIE_CLIENT_ID,
       clientSecret: process.env.BUNGIE_CLIENT_SECRET,
-      headers: { 
-        "X-API-Key": process.env.BUNGIE_API_KEY 
-      },
       checks: ["state"], // Only check state, not PKCE
       profile(profile) {
         console.log('=== PROFILE MAPPING ===')

@@ -47,7 +47,7 @@ export default function Home() {
   }, [session])
 
   const handleCustomLogin = () => {
-    window.location.href = '/api/auth/bungie-callback-custom'
+    window.location.href = '/api/auth/bungie-login'
   }
 
   if (status === 'loading' || loading) {
