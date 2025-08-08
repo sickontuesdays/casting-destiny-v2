@@ -1,10 +1,10 @@
-import { useSession, signOut } from 'next-auth/react'
 import { useState } from 'react'
 import Link from 'next/link'
+import { useAuth } from '../lib/useAuth'
 import FriendSystem from './FriendSystem'
 
 export default function Layout({ children }) {
-  const { data: session } = useSession()
+  const { session, signOut } = useAuth()
   const [showFriends, setShowFriends] = useState(false)
 
   return (
@@ -38,7 +38,7 @@ export default function Layout({ children }) {
             <div className="user-section">
               <div className="user-info">
                 <span className="username">{session.user.name}</span>
-                <span className="membership-id">#{session.bungieMembershipId}</span>
+                <span className="membership-id">#{session.user.id}</span>
               </div>
               <button 
                 className="signout-btn"

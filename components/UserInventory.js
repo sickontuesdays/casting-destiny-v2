@@ -17,8 +17,8 @@ export default function UserInventory({ session }) {
   }, [session, selectedCharacter])
 
   const loadInventory = async () => {
-    const destinyMemberships = session.destinyMemberships || session.user?.destinyMemberships
-    const accessToken = session.accessToken || session.user?.accessToken
+    const destinyMemberships = session.user?.destinyMemberships
+    const accessToken = session.accessToken
 
     if (!destinyMemberships?.length || !accessToken) {
       setLoading(false)
@@ -92,7 +92,7 @@ export default function UserInventory({ session }) {
     )
   }
 
-  const destinyMemberships = session?.destinyMemberships || session?.user?.destinyMemberships
+  const destinyMemberships = session?.user?.destinyMemberships
 
   if (!inventory || !destinyMemberships?.length) {
     return (

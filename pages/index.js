@@ -1,6 +1,6 @@
-import { useSession, signIn } from 'next-auth/react'
 import { useState, useContext, useEffect } from 'react'
 import { useRouter } from 'next/router'
+import { useAuth } from '../lib/useAuth'
 import { AppContext } from './_app'
 import BuildCreator from '../components/BuildCreator'
 import NaturalLanguageInput from '../components/NaturalLanguageInput'
@@ -8,13 +8,12 @@ import BuildDisplay from '../components/BuildDisplay'
 import UserInventory from '../components/UserInventory'
 
 export default function Home() {
-  const { data: session, status } = useSession()
-  const { manifest, loading } = useContext(AppContext)
+  const { session, loading } = useAuth()
+  const { manifest, loading: manifestLoading } = useContext(AppContext)
   const [currentBuild, setCurrentBuild] = useState(null)
   const [buildRequest, setBuildRequest] = useState('')
   const [useInventoryOnly, setUseInventoryOnly] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
-  const [customSession, setCustomSession] = useState(null)
   const [authError, setAuthError] = useState('')
   const router = useRouter()
 
@@ -25,32 +24,7 @@ export default function Home() {
     }
   }, [router.query.error])
 
-  // Check for custom session cookie
-  useEffect(() => {
-    const checkCustomSession = async () => {
-      try {
-        const response = await fetch('/api/auth/session-check')
-        if (response.ok) {
-          const sessionData = await response.json()
-          if (sessionData.user) {
-            setCustomSession(sessionData)
-          }
-        }
-      } catch (error) {
-        console.error('Error checking custom session:', error)
-      }
-    }
-    
-    if (!session) {
-      checkCustomSession()
-    }
-  }, [session])
-
-  const handleCustomLogin = () => {
-    window.location.href = '/api/auth/bungie-login'
-  }
-
-  if (status === 'loading' || loading) {
+  if (loading || manifestLoading) {
     return (
       <div className="loading-screen">
         <div className="destiny-loader"></div>
@@ -59,7 +33,7 @@ export default function Home() {
     )
   }
 
-  if (!session && !customSession) {
+  if (!session) {
     return (
       <div className="login-screen">
         <div className="login-container">
@@ -76,31 +50,19 @@ export default function Home() {
               color: '#e76f51'
             }}>
               <strong>Login Error:</strong> {authError}
-              <br />
-              <small>Check Vercel logs for more details</small>
             </div>
           )}
           
           <button 
             className="bungie-login-btn"
-            onClick={() => signIn('bungie')}
+            onClick={() => window.location.href = '/api/auth/bungie-login'}
           >
-            Sign in with Bungie.net (NextAuth)
-          </button>
-          
-          <button 
-            className="bungie-login-btn"
-            onClick={handleCustomLogin}
-            style={{ marginTop: '1rem', background: 'linear-gradient(45deg, #2a9d8f, #264653)' }}
-          >
-            Sign in with Bungie.net (Custom)
+            Sign in with Bungie.net
           </button>
         </div>
       </div>
     )
   }
-
-  const currentSession = session || customSession
 
   const handleBuildGenerated = (build) => {
     setCurrentBuild(build)
@@ -128,7 +90,7 @@ export default function Home() {
                 onSubmit={handleBuildGenerated}
                 lockedExotic={lockedExotic}
                 useInventoryOnly={useInventoryOnly}
-                session={currentSession}
+                session={session}
               />
               
               <div className="build-options">
@@ -154,14 +116,14 @@ export default function Home() {
               build={currentBuild}
               onNewSearch={handleNewSearch}
               useInventoryOnly={useInventoryOnly}
-              session={currentSession}
+              session={session}
             />
           </div>
         )}
       </div>
 
       <div className="sidebar">
-        <UserInventory session={currentSession} />
+        <UserInventory session={session} />
       </div>
     </div>
   )

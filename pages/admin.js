@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '../lib/useAuth'
 import AdminPanel from '../components/AdminPanel'
 
 export default function Admin() {
-  const { data: session } = useSession()
+  const { session } = useAuth()
   const [isAuthorized, setIsAuthorized] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')

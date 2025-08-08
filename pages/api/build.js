@@ -1,7 +1,8 @@
-import { getSession } from 'next-auth/react'
-import { getSessionFromRequest } from '../../lib/auth-config'
+import { jwtVerify } from 'jose'
 import fs from 'fs'
 import path from 'path'
+
+const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
 
 // Use /tmp directory in serverless environment, local data directory otherwise
 const BUILDS_DIR = process.env.VERCEL ? '/tmp/builds' : path.join(process.cwd(), 'data', 'builds')
@@ -18,29 +19,28 @@ function ensureBuildsDir() {
 }
 
 async function getUserSession(req) {
-  // Try NextAuth session first
   try {
-    const session = await getSession({ req })
-    if (session) {
-      return {
-        userId: session.bungieMembershipId,
-        session
-      }
+    const sessionCookie = req.cookies['bungie-session']
+    
+    if (!sessionCookie) {
+      return null
+    }
+
+    const { payload } = await jwtVerify(sessionCookie, secret)
+    
+    // Check if token is expired
+    if (payload.expires && Date.now() > payload.expires) {
+      return null
+    }
+
+    return {
+      userId: payload.user.id,
+      session: payload
     }
   } catch (error) {
-    console.log('NextAuth session not available:', error.message)
+    console.error('Session verification failed:', error)
+    return null
   }
-
-  // Try custom session
-  const customSession = getSessionFromRequest(req)
-  if (customSession) {
-    return {
-      userId: customSession.user.bungieMembershipId,
-      session: customSession
-    }
-  }
-
-  return null
 }
 
 export default async function handler(req, res) {
