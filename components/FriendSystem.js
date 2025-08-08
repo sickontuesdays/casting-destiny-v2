@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '../lib/useAuth'
 
 export default function FriendSystem() {
-  const { data: session } = useSession()
+  const { session } = useAuth()
   const [friends, setFriends] = useState([])
   const [clanMembers, setClanMembers] = useState([])
   const [loading, setLoading] = useState(true)
