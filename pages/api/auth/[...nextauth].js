@@ -16,57 +16,86 @@ export default NextAuth({
       },
       token: {
         url: "https://www.bungie.net/Platform/app/oauth/token/",
-        params: {
-          grant_type: "authorization_code"
-        }
-      },
-      userinfo: {
-        url: "https://www.bungie.net/Platform/User/GetCurrentUser/",
-        async request({ tokens, provider }) {
-          console.log('=== CUSTOM USERINFO REQUEST ===')
-          console.log('Has access token:', !!tokens.access_token)
-          console.log('API key exists:', !!process.env.BUNGIE_API_KEY)
+        async request({ params, provider }) {
+          console.log('=== CUSTOM TOKEN REQUEST ===')
+          console.log('Token request params:', params)
           
-          const response = await fetch("https://www.bungie.net/Platform/User/GetCurrentUser/", {
+          const response = await fetch("https://www.bungie.net/Platform/app/oauth/token/", {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: params.code,
+              client_id: process.env.BUNGIE_CLIENT_ID,
+              client_secret: process.env.BUNGIE_CLIENT_SECRET
+            })
+          })
+          
+          console.log('Token response status:', response.status)
+          
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error('Token exchange failed:', response.status, errorText)
+            throw new Error(`Token exchange failed: ${response.status}`)
+          }
+          
+          const tokens = await response.json()
+          console.log('Token exchange successful, expires in:', tokens.expires_in)
+          
+          // Now get user info immediately after token exchange
+          const userResponse = await fetch('https://www.bungie.net/Platform/User/GetCurrentUser/', {
             headers: {
               'Authorization': `Bearer ${tokens.access_token}`,
               'X-API-Key': process.env.BUNGIE_API_KEY
             }
           })
           
-          console.log('Userinfo response status:', response.status)
+          console.log('User info response status:', userResponse.status)
           
-          if (!response.ok) {
-            const errorText = await response.text()
-            console.error('Userinfo request failed:', response.status, errorText)
-            throw new Error(`Userinfo request failed: ${response.status}`)
+          if (userResponse.ok) {
+            const userData = await userResponse.json()
+            if (userData.ErrorCode === 1) {
+              console.log('User data retrieved successfully')
+              // Add user data to token response
+              tokens.userInfo = userData.Response
+            } else {
+              console.error('Bungie API Error:', userData.Message)
+            }
+          } else {
+            const errorText = await userResponse.text()
+            console.error('User info request failed:', userResponse.status, errorText)
           }
           
-          const data = await response.json()
-          console.log('Bungie API response ErrorCode:', data.ErrorCode)
-          
-          if (data.ErrorCode !== 1) {
-            console.error('Bungie API Error:', data.Message)
-            throw new Error(`Bungie API Error: ${data.Message}`)
-          }
-          
-          console.log('Userinfo request successful')
-          return data.Response
+          return { tokens }
         }
+      },
+      userinfo: {
+        // Skip userinfo request since we get it in token exchange
+        request: () => null
       },
       clientId: process.env.BUNGIE_CLIENT_ID,
       clientSecret: process.env.BUNGIE_CLIENT_SECRET,
-      checks: ["state"], // Only check state, not PKCE
-      profile(profile) {
+      checks: ["state"],
+      profile(profile, tokens) {
         console.log('=== PROFILE MAPPING ===')
-        console.log('Profile membershipId:', profile.membershipId)
-        console.log('Profile displayName:', profile.displayName)
+        console.log('Has userInfo in tokens:', !!tokens.userInfo)
+        
+        // Use user data from token exchange
+        const userData = tokens.userInfo
+        if (!userData) {
+          throw new Error('No user data available')
+        }
+        
+        console.log('User membershipId:', userData.membershipId)
+        console.log('User displayName:', userData.displayName)
         
         return {
-          id: profile.membershipId,
-          name: profile.displayName || profile.bungieGlobalDisplayName,
-          bungieMembershipId: profile.membershipId,
-          destinyMemberships: profile.destinyMemberships || []
+          id: userData.membershipId,
+          name: userData.displayName || userData.bungieGlobalDisplayName,
+          bungieMembershipId: userData.membershipId,
+          destinyMemberships: userData.destinyMemberships || []
         }
       }
     }
@@ -80,7 +109,7 @@ export default NextAuth({
       if (account) {
         token.accessToken = account.access_token
         token.refreshToken = account.refresh_token
-        token.bungieMembershipId = profile?.membershipId
+        token.bungieMembershipId = profile?.bungieMembershipId
         token.destinyMemberships = profile?.destinyMemberships || []
         console.log('JWT token updated with Bungie data')
       }
