@@ -1,8 +1,32 @@
-import { getSession } from 'next-auth/react'
+import { jwtVerify } from 'jose'
 import { getBungieFriends, getClanMembers } from '../../lib/bungie-api'
 
+const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
+
+async function getUserSession(req) {
+  try {
+    const sessionCookie = req.cookies['bungie-session']
+    
+    if (!sessionCookie) {
+      return null
+    }
+
+    const { payload } = await jwtVerify(sessionCookie, secret)
+    
+    // Check if token is expired
+    if (payload.expires && Date.now() > payload.expires) {
+      return null
+    }
+
+    return payload
+  } catch (error) {
+    console.error('Session verification failed:', error)
+    return null
+  }
+}
+
 export default async function handler(req, res) {
-  const session = await getSession({ req })
+  const session = await getUserSession(req)
   
   if (!session) {
     return res.status(401).json({ error: 'Not authenticated' })
@@ -14,17 +38,17 @@ export default async function handler(req, res) {
       
       if (type === 'destiny-friends') {
         // Get Destiny 2 friends from Bungie API
-        const friends = await getBungieFriends(session.accessToken, session.bungieMembershipId)
+        const friends = await getBungieFriends(session.accessToken, session.user.id)
         res.status(200).json(friends)
       } else if (type === 'clan-members') {
         // Get clan members from Bungie API
-        const clanMembers = await getClanMembers(session.accessToken, session.destinyMemberships)
+        const clanMembers = await getClanMembers(session.accessToken, session.user.destinyMemberships)
         res.status(200).json(clanMembers)
       } else {
         // Get all friends (combined)
         const [friends, clanMembers] = await Promise.all([
-          getBungieFriends(session.accessToken, session.bungieMembershipId),
-          getClanMembers(session.accessToken, session.destinyMemberships)
+          getBungieFriends(session.accessToken, session.user.id),
+          getClanMembers(session.accessToken, session.user.destinyMemberships)
         ])
         
         // Combine and deduplicate
