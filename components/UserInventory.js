@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
 import { getUserInventory } from '../lib/bungie-api'
 
-export default function UserInventory() {
-  const { data: session } = useSession()
+export default function UserInventory({ session }) {
   const [inventory, setInventory] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedCharacter, setSelectedCharacter] = useState(0)
@@ -13,21 +11,26 @@ export default function UserInventory() {
   useEffect(() => {
     if (session) {
       loadInventory()
+    } else {
+      setLoading(false)
     }
   }, [session, selectedCharacter])
 
   const loadInventory = async () => {
-    if (!session?.destinyMemberships?.length) {
+    const destinyMemberships = session.destinyMemberships || session.user?.destinyMemberships
+    const accessToken = session.accessToken || session.user?.accessToken
+
+    if (!destinyMemberships?.length || !accessToken) {
       setLoading(false)
       return
     }
 
     try {
-      const membershipType = session.destinyMemberships[0].membershipType
-      const destinyMembershipId = session.destinyMemberships[0].membershipId
+      const membershipType = destinyMemberships[0].membershipType
+      const destinyMembershipId = destinyMemberships[0].membershipId
       
       const inventoryData = await getUserInventory(
-        session.accessToken,
+        accessToken,
         membershipType,
         destinyMembershipId
       )
@@ -89,7 +92,9 @@ export default function UserInventory() {
     )
   }
 
-  if (!inventory || !session?.destinyMemberships?.length) {
+  const destinyMemberships = session?.destinyMemberships || session?.user?.destinyMemberships
+
+  if (!inventory || !destinyMemberships?.length) {
     return (
       <div className="inventory-sidebar">
         <div className="inventory-header">

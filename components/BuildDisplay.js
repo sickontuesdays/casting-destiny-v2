@@ -1,9 +1,7 @@
 import { useState } from 'react'
-import { useSession } from 'next-auth/react'
 import ItemAcquisition from './ItemAcquisition'
 
-export default function BuildDisplay({ build, onNewSearch, useInventoryOnly }) {
-  const { data: session } = useSession()
+export default function BuildDisplay({ build, onNewSearch, useInventoryOnly, session }) {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [buildName, setBuildName] = useState('')
   const [buildDescription, setBuildDescription] = useState('')

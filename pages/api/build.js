@@ -1,4 +1,5 @@
 import { getSession } from 'next-auth/react'
+import { getSessionFromRequest } from '../../lib/auth-config'
 import fs from 'fs'
 import path from 'path'
 
@@ -16,14 +17,40 @@ function ensureBuildsDir() {
   }
 }
 
+async function getUserSession(req) {
+  // Try NextAuth session first
+  try {
+    const session = await getSession({ req })
+    if (session) {
+      return {
+        userId: session.bungieMembershipId,
+        session
+      }
+    }
+  } catch (error) {
+    console.log('NextAuth session not available:', error.message)
+  }
+
+  // Try custom session
+  const customSession = getSessionFromRequest(req)
+  if (customSession) {
+    return {
+      userId: customSession.user.bungieMembershipId,
+      session: customSession
+    }
+  }
+
+  return null
+}
+
 export default async function handler(req, res) {
-  const session = await getSession({ req })
+  const sessionData = await getUserSession(req)
   
-  if (!session) {
+  if (!sessionData) {
     return res.status(401).json({ error: 'Not authenticated' })
   }
 
-  const userId = session.bungieMembershipId
+  const { userId } = sessionData
   const userBuildsFile = path.join(BUILDS_DIR, `${userId}.json`)
 
   if (req.method === 'GET') {

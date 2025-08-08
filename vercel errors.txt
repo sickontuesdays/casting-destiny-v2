@@ -1,0 +1,69 @@
+Aug 07 18:14:06.43
+GET200
+casting-destiny-v2.vercel.app
+/api/auth/session
+Aug 07 18:14:06.40
+GET200
+casting-destiny-v2.vercel.app
+/api/bungie/manifest
+Aug 07 18:14:06.01
+GET302
+casting-destiny-v2.vercel.app
+/api/auth/signin
+Aug 07 18:14:05.82
+GET302
+casting-destiny-v2.vercel.app
+/api/auth/error
+Aug 07 18:14:04.60
+GET302
+casting-destiny-v2.vercel.app
+/api/auth/callback/bungie
+[next-auth][error][OAUTH_CALLBACK_ERROR] https://next-auth.js.org/errors#oauth_callback_error expected 200 OK, got: 404 Not Found { error: OPError: expected 200 OK, got: 404 Not Found at processResponse (/var/task/node_modules/openid-client/lib/helpers/process_response.js:41:11) at Client.userinfo (/var/task/node_modules/openid-client/lib/client.js:1291:18) at process.processTicksAndRejections (node:internal/process/task_queues:105:5) at async oAuthCallback (/var/task/node_modules/next-auth/core/lib/oauth/callback.js:112:17) at async Object.callback (/var/task/node_modules/next-auth/core/routes/callback.js:45:11) at async AuthHandler (/var/task/node_modules/next-auth/core/index.js:175:28) at async NextAuthApiHandler (/var/task/node_modules/next-auth/next/index.js:18:19) at async NextAuth._args$ (/var/task/node_modules/next-auth/next/index.js:91:14) at async K (/var/task/node_modules/next/dist/compiled/next-server/pages-api.runtime.prod.js:20:16881) at async U.render (/var/task/node_modules/next/dist/compiled/next-server/pages-api.runtime.prod.js:20:17520) { name: 'OAuthCallbackError', code: undefined }, providerId: 'bungie', message: 'expected 200 OK, got: 404 Not Found' }
+Aug 07 18:13:55.57
+POST200
+casting-destiny-v2.vercel.app
+/api/auth/signin/bungie
+2
+[next-auth][debug][GET_AUTHORIZATION_URL] { url: 'https://www.bungie.net/en/oauth/authorize?client_id=50317&scope=&response_type=code&redirect_uri=https%3A%2F%2Fcasting-destiny-v2.vercel.app%2Fapi%2Fauth%2Fcallback%2Fbungie&state=2Ah8D0mTcKchyf1ZnhFWxJIfDo5Q03tWMhlkhB1qxUs', cookies: [ { name: '__Secure-next-auth.state', value: 'eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..dAn9bQfm8LHj1feH.dHd_3C3tAcpxhV-BQBH_AmxjSEAz-Ye4QsSJiCYUHqRdYEv2vhpFyVxsXKrrseG26zM76IZhn5E3vVmeD2nA63TE3m1z6kIwtsCqOmGDk-azMFog3xq4skTS4xNhkyeVmJpO_OAncSN3W4lYXYkx6wPNzd7MhyCPQCFcJRw_Gq3bebIwk_g.FcVjUS1Wl5ECiRzvyqrvkQ', options: [Object] } ], provider: { id: 'bungie', name: 'Bungie', type: 'oauth', authorization: { url: 'https://www.bungie.net/en/oauth/authorize', params: [Object] }, token: { url: 'https://www.bungie.net/Platform/app/oauth/token/', params: [Object] }, userinfo: { url: 'https://www.bungie.net/Platform/User/GetCurrentUser/', params: {} }, clientId: '50317', clientSecret: 'rEFDkxDo9Z52SPS46kq8gp3M2iNjgMZsCEF5G7z3Nt4', headers: { 'X-API-Key': '25bbf2f2d4d5439f9d6fe05558b152f4' }, checks: [ 'state' ], profile: [Function: profile], idToken: false, signinUrl: 'https://casting-destiny-v2.vercel.app/api/auth/signin/bungie', callbackUrl: 'https://casting-destiny-v2.vercel.app/api/auth/callback/bungie' } }
+Aug 07 18:13:55.36
+GET200
+casting-destiny-v2.vercel.app
+/api/auth/csrf
+Aug 07 18:13:54.98
+GET200
+casting-destiny-v2.vercel.app
+/api/auth/providers
+[next-auth][warn][DEBUG_ENABLED] https://next-auth.js.org/warnings#debug_enabled
+Aug 07 18:13:52.66
+GET200
+casting-destiny-v2.vercel.app
+/api/bungie/manifest
+2
+Manifest saved to file successfully!
+Aug 07 18:13:52.66
+GET200
+casting-destiny-v2.vercel.app
+/api/auth/session
+[next-auth][warn][DEBUG_ENABLED] https://next-auth.js.org/warnings#debug_enabled
+Aug 07 18:13:43.29
+GET200
+casting-destiny-v2-1c0elhe1x-sickon-tuesdays.vercel.app
+/api/auth/session
+[next-auth][warn][DEBUG_ENABLED] https://next-auth.js.org/warnings#debug_enabled
+Aug 07 18:13:43.29
+GET200
+casting-destiny-v2-1c0elhe1x-sickon-tuesdays.vercel.app
+/api/bungie/manifest
+2
+Manifest saved to file successfully!
+Aug 07 18:13:42.10
+GET200
+casting-destiny-v2-1c0elhe1x-sickon-tuesdays.vercel.app
+/api/bungie/manifest
+2
+Manifest saved to file successfully!
+Aug 07 18:13:42.10
+GET200
+casting-destiny-v2-1c0elhe1x-sickon-tuesdays.vercel.app
+/api/auth/session
+[next-auth][warn][DEBUG_ENABLED] https://next-auth.js.org/warnings#debug_enabled

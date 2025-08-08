@@ -1,5 +1,6 @@
 import { useSession, signIn } from 'next-auth/react'
-import { useState, useContext } from 'react'
+import { useState, useContext, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import { AppContext } from './_app'
 import BuildCreator from '../components/BuildCreator'
 import NaturalLanguageInput from '../components/NaturalLanguageInput'
@@ -13,6 +14,41 @@ export default function Home() {
   const [buildRequest, setBuildRequest] = useState('')
   const [useInventoryOnly, setUseInventoryOnly] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
+  const [customSession, setCustomSession] = useState(null)
+  const [authError, setAuthError] = useState('')
+  const router = useRouter()
+
+  // Check for authentication errors in URL
+  useEffect(() => {
+    if (router.query.error) {
+      setAuthError(router.query.error)
+    }
+  }, [router.query.error])
+
+  // Check for custom session cookie
+  useEffect(() => {
+    const checkCustomSession = async () => {
+      try {
+        const response = await fetch('/api/auth/session-check')
+        if (response.ok) {
+          const sessionData = await response.json()
+          if (sessionData.user) {
+            setCustomSession(sessionData)
+          }
+        }
+      } catch (error) {
+        console.error('Error checking custom session:', error)
+      }
+    }
+    
+    if (!session) {
+      checkCustomSession()
+    }
+  }, [session])
+
+  const handleCustomLogin = () => {
+    window.location.href = '/api/auth/bungie-callback-custom'
+  }
 
   if (status === 'loading' || loading) {
     return (
@@ -23,22 +59,48 @@ export default function Home() {
     )
   }
 
-  if (!session) {
+  if (!session && !customSession) {
     return (
       <div className="login-screen">
         <div className="login-container">
           <h1>Casting Destiny v2</h1>
           <p>Create the perfect Destiny 2 build for any situation</p>
+          
+          {authError && (
+            <div className="error-message" style={{
+              background: 'rgba(231, 111, 81, 0.2)',
+              border: '1px solid #e76f51',
+              borderRadius: '0.5rem',
+              padding: '1rem',
+              margin: '1rem 0',
+              color: '#e76f51'
+            }}>
+              <strong>Login Error:</strong> {authError}
+              <br />
+              <small>Check Vercel logs for more details</small>
+            </div>
+          )}
+          
           <button 
             className="bungie-login-btn"
             onClick={() => signIn('bungie')}
           >
-            Sign in with Bungie.net
+            Sign in with Bungie.net (NextAuth)
+          </button>
+          
+          <button 
+            className="bungie-login-btn"
+            onClick={handleCustomLogin}
+            style={{ marginTop: '1rem', background: 'linear-gradient(45deg, #2a9d8f, #264653)' }}
+          >
+            Sign in with Bungie.net (Custom)
           </button>
         </div>
       </div>
     )
   }
+
+  const currentSession = session || customSession
 
   const handleBuildGenerated = (build) => {
     setCurrentBuild(build)
@@ -66,6 +128,7 @@ export default function Home() {
                 onSubmit={handleBuildGenerated}
                 lockedExotic={lockedExotic}
                 useInventoryOnly={useInventoryOnly}
+                session={currentSession}
               />
               
               <div className="build-options">
@@ -91,13 +154,14 @@ export default function Home() {
               build={currentBuild}
               onNewSearch={handleNewSearch}
               useInventoryOnly={useInventoryOnly}
+              session={currentSession}
             />
           </div>
         )}
       </div>
 
       <div className="sidebar">
-        <UserInventory />
+        <UserInventory session={currentSession} />
       </div>
     </div>
   )
