@@ -1,7 +1,6 @@
 import { BuildIntelligence } from '../../lib/destiny-intelligence/build-intelligence'
 import { IntelligentManifestProcessor } from '../../lib/intelligent-manifest-processor'
 import { EnhancedBuildScorer } from '../../lib/enhanced-build-scorer'
-import manifestManager from '../../lib/manifest-manager'
 
 let buildIntelligence = null;
 let manifestProcessor = null;
@@ -25,16 +24,20 @@ async function initializeIntelligence() {
       // Initialize manifest processor
       manifestProcessor = new IntelligentManifestProcessor();
       
-      // Get manifest data directly from manifest manager
-      const processedManifest = await manifestManager.loadManifest();
+      // Get manifest data - use the manifest API endpoint
+      const manifestResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/bungie/manifest`)
+      if (!manifestResponse.ok) {
+        throw new Error(`Failed to fetch manifest: ${manifestResponse.status}`)
+      }
+      const manifestData = await manifestResponse.json()
       
       // Initialize build intelligence
       buildIntelligence = new BuildIntelligence();
-      await buildIntelligence.initialize(processedManifest);
+      await buildIntelligence.initialize(manifestData);
 
       // Initialize enhanced build scorer
       buildScorer = new EnhancedBuildScorer();
-      await buildScorer.initialize(processedManifest, buildIntelligence);
+      await buildScorer.initialize(manifestData, buildIntelligence);
 
       console.log('Intelligence system initialized successfully');
     } catch (error) {
@@ -53,131 +56,86 @@ export default async function handler(req, res) {
     // Get user session (optional - will work without authentication)
     const session = await getSessionFromRequest(req);
     
-    // Initialize intelligence system if needed
+    // Initialize intelligence systems if needed
     await initializeIntelligence();
 
-    const { request, lockedExotic, useInventoryOnly, sessionId } = req.body;
+    const { input, preferences, constraints } = req.body;
 
-    if (!request || typeof request !== 'string') {
-      return res.status(400).json({ error: 'Build request is required' });
+    if (!input) {
+      return res.status(400).json({ error: 'Build input is required' });
     }
 
-    // Validate request length
-    if (request.length > 1000) {
-      return res.status(400).json({ error: 'Build request too long' });
-    }
+    console.log('Generating intelligent build for input:', input);
 
-    // Generate intelligent build
-    const startTime = Date.now();
-    
-    const buildOptions = {
-      lockedExotic: lockedExotic || null,
-      useInventoryOnly: useInventoryOnly || false,
-      userSession: session,
-      includeAnalysis: true,
-      maxAlternatives: 3,
-      optimizationLevel: 'comprehensive'
-    };
-
-    // Step 1: Analyze the request
-    const requestAnalysis = await buildIntelligence.analyzeRequest(request, {
-      includeKeywords: true,
-      includeSynergies: true,
-      includeStatPriorities: true,
-      includeActivityType: true
+    // Parse the user's natural language input
+    const analysis = await buildIntelligence.analyzeRequest(input, {
+      userPreferences: preferences,
+      constraints: constraints
     });
 
-    // Step 2: Generate the optimal build
-    const intelligentBuild = await buildIntelligence.generateOptimalBuild(request, buildOptions);
+    if (!analysis.success) {
+      return res.status(400).json({ 
+        error: 'Could not understand build request',
+        details: analysis.error
+      });
+    }
 
-    // Step 3: Enhanced scoring and analysis
-    const enhancedScore = await buildScorer.scoreBuild(intelligentBuild.build, {
-      request: request,
-      analysis: requestAnalysis,
+    // Generate the intelligent build
+    const buildResult = await buildIntelligence.generateBuild(analysis.parsedRequest, {
       includeAlternatives: true,
-      includeOptimizations: true
+      detailedAnalysis: true,
+      optimizationSuggestions: true
     });
 
-    // Step 4: Generate build alternatives
-    const alternatives = await buildIntelligence.generateBuildAlternatives(
-      intelligentBuild.build, 
-      requestAnalysis, 
-      { maxAlternatives: 3 }
-    );
+    // Enhanced scoring and analysis
+    const scoring = await buildScorer.scoreBuild(buildResult.build, {
+      includeBreakdown: true,
+      suggestOptimizations: true
+    });
 
-    // Step 5: Compile comprehensive response
+    // Compile comprehensive response
     const response = {
       success: true,
-      build: intelligentBuild.build,
       analysis: {
-        request: requestAnalysis,
-        intelligence: intelligentBuild.analysis,
-        scoring: enhancedScore,
-        processingTime: Date.now() - startTime
+        input: input,
+        understood: analysis.parsedRequest,
+        confidence: analysis.confidence
       },
-      alternatives: alternatives,
+      build: buildResult.build,
+      intelligence: {
+        synergies: buildResult.synergies,
+        conflicts: buildResult.conflicts,
+        optimization: buildResult.optimization,
+        alternatives: buildResult.alternatives
+      },
+      scoring: {
+        overall: scoring.totalScore,
+        breakdown: scoring.breakdown,
+        strengths: scoring.strengths,
+        weaknesses: scoring.weaknesses,
+        suggestions: scoring.suggestions
+      },
       metadata: {
         generatedAt: new Date().toISOString(),
-        intelligenceVersion: '1.0.0',
-        processingTime: Date.now() - startTime,
-        optimizationLevel: buildOptions.optimizationLevel
-      },
-      recommendations: {
-        improvements: enhancedScore.recommendations || [],
-        synergies: requestAnalysis.detectedSynergies || [],
-        warnings: enhancedScore.warnings || []
+        intelligenceVersion: buildIntelligence.getVersion(),
+        userId: session?.user?.id || 'anonymous'
       }
     };
 
-    // Log successful generation
-    console.log(`Intelligent build generated successfully in ${Date.now() - startTime}ms`);
-    console.log(`Request: "${request.substring(0, 50)}..."`);
-    console.log(`Score: ${enhancedScore.totalScore}`);
+    console.log('Build generated successfully:', {
+      score: scoring.totalScore,
+      synergies: buildResult.synergies?.length || 0,
+      alternatives: buildResult.alternatives?.length || 0
+    });
 
     res.status(200).json(response);
 
   } catch (error) {
     console.error('Error generating intelligent build:', error);
-
-    // Provide helpful error responses
-    let errorMessage = 'Failed to generate build';
-    let statusCode = 500;
-
-    if (error.message.includes('manifest')) {
-      errorMessage = 'Manifest data unavailable. Please try again later.';
-      statusCode = 503;
-    } else if (error.message.includes('parsing')) {
-      errorMessage = 'Could not understand the build request. Please try rephrasing.';
-      statusCode = 400;
-    } else if (error.message.includes('items')) {
-      errorMessage = 'Could not find suitable items for this build. Try a different approach.';
-      statusCode = 404;
-    }
-
-    res.status(statusCode).json({
-      success: false,
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      suggestions: [
-        'Try being more specific about the activity type (PVP, PVE, raids)',
-        'Specify which exotic armor piece you want to use',
-        'Mention specific stats you want to prioritize',
-        'Include the subclass element you prefer'
-      ]
+    
+    res.status(500).json({ 
+      error: 'Failed to generate intelligent build',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 }
-
-// Helper function to warm up the intelligence system
-export async function warmUpIntelligence() {
-  try {
-    await initializeIntelligence();
-    return true;
-  } catch (error) {
-    console.error('Failed to warm up intelligence system:', error);
-    return false;
-  }
-}
-
-// Export the initialization function for use in other API routes
-export { initializeIntelligence };

@@ -1,27 +1,113 @@
-import { createContext, useState, useEffect } from 'react'
-import manifestManager from '../lib/manifest-manager'
-import buildScorer from '../lib/build-scorer'
-import { BuildIntelligence } from '../lib/destiny-intelligence/build-intelligence'
+import React, { useState, useEffect, createContext, useContext } from 'react'
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
 
-export const AppContext = createContext()
+// Create AppContext
+const AppContext = createContext({
+  manifest: null,
+  buildIntelligence: null,
+  buildScorer: null,
+  manifestManager: null,
+  intelligenceStatus: {
+    isLoading: false,
+    isInitialized: false,
+    error: null,
+    features: [],
+    version: null
+  },
+  refreshIntelligence: async () => false,
+  isIntelligenceReady: () => false,
+  getIntelligenceFeatures: () => [],
+  getSystemVersion: () => null
+})
+
+export { AppContext }
+
+export const useAppContext = () => useContext(AppContext)
 
 function MyApp({ Component, pageProps }) {
   const [manifest, setManifest] = useState(null)
   const [buildIntelligence, setBuildIntelligence] = useState(null)
+  const [buildScorer, setBuildScorer] = useState(null)
+  const [manifestManager, setManifestManager] = useState(null)
   const [intelligenceStatus, setIntelligenceStatus] = useState({
-    isLoading: true,
+    isLoading: false,
     isInitialized: false,
     error: null,
-    features: []
+    features: [],
+    version: null
   })
 
+  // Initialize intelligence system on app start
   useEffect(() => {
     initializeIntelligenceSystem()
   }, [])
 
   const initializeIntelligenceSystem = async () => {
+    setIntelligenceStatus(prev => ({
+      ...prev,
+      isLoading: true,
+      error: null
+    }))
+
+    try {
+      console.log('🧠 Initializing Intelligence System...')
+
+      // Import intelligence system components
+      const { default: ManifestManager } = await import('../lib/manifest-manager')
+      const { EnhancedBuildScorer } = await import('../lib/enhanced-build-scorer')
+      const { BuildIntelligence } = await import('../lib/destiny-intelligence/build-intelligence')
+
+      // Initialize manifest manager
+      const manifestMgr = new ManifestManager()
+      const manifestData = await manifestMgr.loadManifest()
+      
+      console.log('📄 Manifest loaded successfully')
+      setManifest(manifestData)
+      setManifestManager(manifestMgr)
+
+      // Initialize build intelligence
+      const intelligence = new BuildIntelligence()
+      await intelligence.initialize(manifestData)
+      setBuildIntelligence(intelligence)
+
+      // Initialize enhanced build scorer
+      const scorer = new EnhancedBuildScorer()
+      await scorer.initialize(manifestData)
+      setBuildScorer(scorer)
+
+      // Update status
+      setIntelligenceStatus({
+        isLoading: false,
+        isInitialized: true,
+        error: null,
+        features: [
+          'Natural Language Processing',
+          'Synergy Analysis',
+          'Build Optimization',
+          'Exotic Recommendations',
+          'Stat Calculations'
+        ],
+        version: manifestData?.version || '1.0.0'
+      })
+
+      console.log('✅ Intelligence System initialized successfully!')
+
+    } catch (error) {
+      console.error('❌ Failed to initialize intelligence system:', error)
+      setIntelligenceStatus({
+        isLoading: false,
+        isInitialized: false,
+        error: error.message,
+        features: [],
+        version: null
+      })
+    }
+  }
+
+  const refreshIntelligence = async (forceRefresh = false) => {
+    console.log('🔄 Refreshing intelligence system...')
+    
     try {
       setIntelligenceStatus(prev => ({
         ...prev,
@@ -29,75 +115,24 @@ function MyApp({ Component, pageProps }) {
         error: null
       }))
 
-      console.log('🚀 Initializing Casting Destiny v2 Intelligence System...')
-
-      // Step 1: Load and process manifest
-      console.log('📦 Loading Destiny 2 manifest...')
-      const processedManifest = await manifestManager.loadManifest()
-      setManifest(processedManifest)
-      console.log('✅ Manifest loaded and processed')
-
-      // Step 2: Initialize build scorer with intelligence
-      console.log('🧠 Initializing build intelligence...')
-      await buildScorer.initialize(processedManifest)
-      console.log('✅ Build scorer initialized')
-
-      // Step 3: Initialize build intelligence for direct use
-      console.log('🎯 Setting up build intelligence context...')
-      const intelligence = new BuildIntelligence()
-      await intelligence.initialize(processedManifest)
-      setBuildIntelligence(intelligence)
-      console.log('✅ Build intelligence ready')
-
-      // Step 4: Get capabilities
-      const capabilities = buildScorer.getScoringCapabilities()
-      
-      setIntelligenceStatus({
-        isLoading: false,
-        isInitialized: true,
-        error: null,
-        features: capabilities.features || [],
-        version: capabilities.version,
-        manifestVersion: manifestManager.getManifestStats?.()?.version
-      })
-
-      console.log('🎉 Intelligence system fully initialized!')
-      console.log(`📊 Features available: ${capabilities.features.join(', ')}`)
-
-    } catch (error) {
-      console.error('❌ Failed to initialize intelligence system:', error)
-      
-      setIntelligenceStatus({
-        isLoading: false,
-        isInitialized: false,
-        error: error.message,
-        features: []
-      })
-
-      // Don't break the app - let components handle the lack of intelligence gracefully
-      console.log('⚠️  App will run with limited functionality')
-    }
-  }
-
-  const refreshIntelligence = async (forceRefresh = false) => {
-    try {
-      console.log('🔄 Refreshing intelligence system...')
-      
       // Refresh manifest
-      const freshManifest = await manifestManager.loadManifest(forceRefresh)
-      setManifest(freshManifest)
+      if (manifestManager) {
+        const refreshedManifest = await manifestManager.loadManifest(forceRefresh)
+        setManifest(refreshedManifest)
 
-      // Re-initialize intelligence components
-      await buildScorer.initialize(freshManifest)
-      
-      if (buildIntelligence) {
-        await buildIntelligence.initialize(freshManifest)
+        // Re-initialize intelligence components with refreshed data
+        if (buildIntelligence) {
+          await buildIntelligence.initialize(refreshedManifest)
+        }
+        if (buildScorer) {
+          await buildScorer.initialize(refreshedManifest)
+        }
       }
 
       setIntelligenceStatus(prev => ({
         ...prev,
-        error: null,
-        manifestVersion: manifestManager.getManifestStats?.()?.version
+        isLoading: false,
+        version: manifest?.version
       }))
 
       console.log('✅ Intelligence system refreshed successfully')
