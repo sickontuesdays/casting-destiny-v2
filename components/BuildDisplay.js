@@ -1,281 +1,446 @@
-import { useState } from 'react'
-import ItemAcquisition from './ItemAcquisition'
+import { useState, useEffect } from 'react'
+import { EnhancedBuildScorer } from '../lib/enhanced-build-scorer'
 
 export default function BuildDisplay({ build, onNewSearch, useInventoryOnly, session }) {
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
-  const [buildName, setBuildName] = useState('')
-  const [buildDescription, setBuildDescription] = useState('')
-  const [showAcquisition, setShowAcquisition] = useState({})
+  const [activeTab, setActiveTab] = useState('overview')
+  const [enhancedScore, setEnhancedScore] = useState(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [expandedSections, setExpandedSections] = useState({
+    synergies: false,
+    alternatives: false,
+    optimizations: false
+  })
 
-  const saveBuild = async () => {
+  useEffect(() => {
+    if (build && build.analysis) {
+      // Enhanced scoring is already included in intelligent builds
+      setEnhancedScore(build.analysis.scoring)
+    } else if (build) {
+      // For legacy builds, calculate enhanced scoring
+      calculateEnhancedScore()
+    }
+  }, [build])
+
+  const calculateEnhancedScore = async () => {
+    if (!build || isAnalyzing) return
+
+    setIsAnalyzing(true)
     try {
-      const response = await fetch('/api/builds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          build,
-          name: buildName,
-          description: buildDescription
-        })
+      const scorer = new EnhancedBuildScorer()
+      const scoring = await scorer.scoreBuild(build, {
+        includeAlternatives: true,
+        includeOptimizations: true
       })
-
-      if (response.ok) {
-        setShowSaveDialog(false)
-        setBuildName('')
-        setBuildDescription('')
-        // Show success notification
-      }
+      setEnhancedScore(scoring)
     } catch (error) {
-      console.error('Error saving build:', error)
+      console.error('Error calculating enhanced score:', error)
+    } finally {
+      setIsAnalyzing(false)
     }
   }
 
-  const applyBuild = async () => {
-    // This would integrate with Bungie API to actually equip items
-    // For now, just show a notification
-    alert('Build application feature coming soon! You can manually equip these items for now.')
-  }
-
-  const shareBuild = () => {
-    const buildUrl = `${window.location.origin}/shared-build/${btoa(JSON.stringify(build))}`
-    navigator.clipboard.writeText(buildUrl)
-    alert('Build link copied to clipboard!')
-  }
-
-  const toggleAcquisition = (itemHash) => {
-    setShowAcquisition(prev => ({
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
       ...prev,
-      [itemHash]: !prev[itemHash]
+      [section]: !prev[section]
     }))
   }
 
-  const renderWeapon = (weapon, slot) => (
-    <div key={`${slot}-${weapon.hash}`} className="weapon-slot">
-      <div className="slot-header">{slot}</div>
-      <div className="weapon-card">
-        <div className="weapon-icon">
-          <img 
-            src={`https://www.bungie.net${weapon.displayProperties.icon}`}
-            alt={weapon.displayProperties.name}
+  const getScoreColor = (score) => {
+    if (score >= 85) return 'excellent'
+    if (score >= 70) return 'good'
+    if (score >= 50) return 'fair'
+    return 'poor'
+  }
+
+  const getStatValue = (statHash) => {
+    return build.stats?.[statHash] || 0
+  }
+
+  const getStatBreakpoints = (statHash, value) => {
+    const breakpoints = {
+      2996146975: [30, 50, 70, 100], // Mobility
+      392767087: [30, 50, 70, 100],  // Resilience  
+      1943323491: [30, 50, 70, 100], // Recovery
+      1735777505: [40, 70, 100],     // Discipline
+      144602215: [40, 70, 100],      // Intellect
+      4244567218: [40, 70, 100]      // Strength
+    }
+
+    const statBreakpoints = breakpoints[statHash] || []
+    const nextBreakpoint = statBreakpoints.find(bp => bp > value)
+    const prevBreakpoint = statBreakpoints.filter(bp => bp <= value).pop()
+
+    return { nextBreakpoint, prevBreakpoint, breakpoints: statBreakpoints }
+  }
+
+  const renderStatBar = (statName, statHash, value) => {
+    const { nextBreakpoint, prevBreakpoint, breakpoints } = getStatBreakpoints(statHash, value)
+    const maxStat = 100
+    const percentage = Math.min((value / maxStat) * 100, 100)
+
+    return (
+      <div key={statHash} className="stat-bar">
+        <div className="stat-header">
+          <span className="stat-name">{statName}</span>
+          <span className="stat-value">{value}</span>
+        </div>
+        <div className="stat-progress">
+          <div 
+            className="stat-fill" 
+            style={{ width: `${percentage}%` }}
           />
+          {breakpoints.map(bp => (
+            <div 
+              key={bp}
+              className={`stat-breakpoint ${value >= bp ? 'reached' : 'unreached'}`}
+              style={{ left: `${(bp / maxStat) * 100}%` }}
+            />
+          ))}
         </div>
-        <div className="weapon-info">
-          <h4>{weapon.displayProperties.name}</h4>
-          <p className="weapon-type">{weapon.itemTypeDisplayName}</p>
-          {weapon.recommendedPerks && (
-            <div className="recommended-perks">
-              <strong>Recommended Perks:</strong>
-              <ul>
-                {weapon.recommendedPerks.map((perk, index) => (
-                  <li key={index}>{perk}</li>
-                ))}
-              </ul>
-            </div>
+        <div className="stat-info">
+          {nextBreakpoint && (
+            <span className="next-breakpoint">
+              {nextBreakpoint - value} to next tier
+            </span>
           )}
-          {!weapon.inInventory && !useInventoryOnly && (
-            <button 
-              className="acquisition-btn"
-              onClick={() => toggleAcquisition(weapon.hash)}
-            >
-              Where to get this?
-            </button>
+          {prevBreakpoint && (
+            <span className="tier-info">Tier {Math.floor(prevBreakpoint / 10)}</span>
           )}
         </div>
       </div>
-      {showAcquisition[weapon.hash] && (
-        <ItemAcquisition item={weapon} />
-      )}
-    </div>
-  )
+    )
+  }
 
-  const renderArmor = (armor, slot) => (
-    <div key={`${slot}-${armor.hash}`} className="armor-slot">
-      <div className="slot-header">{slot}</div>
-      <div className="armor-card">
-        <div className="armor-icon">
-          <img 
-            src={`https://www.bungie.net${armor.displayProperties.icon}`}
-            alt={armor.displayProperties.name}
-          />
-        </div>
-        <div className="armor-info">
-          <h4>{armor.displayProperties.name}</h4>
-          {armor.recommendedStats && (
-            <div className="recommended-stats">
-              <strong>Focus Stats:</strong>
-              <div className="stat-bars">
-                {Object.entries(armor.recommendedStats).map(([stat, value]) => (
-                  <div key={stat} className="stat-bar">
-                    <span className="stat-name">{stat}</span>
-                    <div className="stat-value">{value}</div>
+  const renderIntelligenceAnalysis = () => {
+    if (!build.analysis?.intelligence) return null
+
+    const { intelligence } = build.analysis
+
+    return (
+      <div className="intelligence-analysis">
+        <h3>🧠 Intelligence Analysis</h3>
+        
+        {intelligence.triggers && intelligence.triggers.length > 0 && (
+          <div className="analysis-section">
+            <h4>Detected Triggers</h4>
+            <div className="trigger-list">
+              {intelligence.triggers.map((trigger, index) => (
+                <div key={index} className="trigger-item">
+                  <div className="trigger-header">
+                    <span className="trigger-type">{trigger.type}</span>
+                    <span className="trigger-priority">{trigger.priority}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {armor.recommendedMods && (
-            <div className="recommended-mods">
-              <strong>Recommended Mods:</strong>
-              <ul>
-                {armor.recommendedMods.map((mod, index) => (
-                  <li key={index}>{mod}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {!armor.inInventory && !useInventoryOnly && (
-            <button 
-              className="acquisition-btn"
-              onClick={() => toggleAcquisition(armor.hash)}
-            >
-              Where to get this?
-            </button>
-          )}
-        </div>
-      </div>
-      {showAcquisition[armor.hash] && (
-        <ItemAcquisition item={armor} />
-      )}
-    </div>
-  )
-
-  return (
-    <div className="build-display">
-      <div className="build-header">
-        <div className="build-title">
-          <h2>{build.name || 'Generated Build'}</h2>
-          <p className="build-score">Build Score: {build.score}/100</p>
-        </div>
-        <div className="build-actions">
-          <button className="action-btn secondary" onClick={onNewSearch}>
-            New Search
-          </button>
-          <button className="action-btn primary" onClick={() => setShowSaveDialog(true)}>
-            Save Build
-          </button>
-          <button className="action-btn primary" onClick={shareBuild}>
-            Share Build
-          </button>
-          <button className="action-btn apply" onClick={applyBuild}>
-            Apply Build
-          </button>
-        </div>
-      </div>
-
-      <div className="build-summary">
-        <p>{build.description}</p>
-        {build.playstyle && (
-          <div className="playstyle-tags">
-            {build.playstyle.map((style, index) => (
-              <span key={index} className="playstyle-tag">{style}</span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="build-content">
-        <div className="weapons-section">
-          <h3>Weapons</h3>
-          <div className="weapons-grid">
-            {build.weapons?.kinetic && renderWeapon(build.weapons.kinetic, 'Kinetic')}
-            {build.weapons?.energy && renderWeapon(build.weapons.energy, 'Energy')}
-            {build.weapons?.power && renderWeapon(build.weapons.power, 'Power')}
-          </div>
-        </div>
-
-        <div className="armor-section">
-          <h3>Armor</h3>
-          <div className="armor-grid">
-            {build.armor?.helmet && renderArmor(build.armor.helmet, 'Helmet')}
-            {build.armor?.arms && renderArmor(build.armor.arms, 'Arms')}
-            {build.armor?.chest && renderArmor(build.armor.chest, 'Chest')}
-            {build.armor?.legs && renderArmor(build.armor.legs, 'Legs')}
-            {build.armor?.classItem && renderArmor(build.armor.classItem, 'Class Item')}
-          </div>
-        </div>
-
-        {build.subclass && (
-          <div className="subclass-section">
-            <h3>Subclass</h3>
-            <div className="subclass-card">
-              <div className="subclass-icon">
-                <img 
-                  src={`https://www.bungie.net${build.subclass.displayProperties.icon}`}
-                  alt={build.subclass.displayProperties.name}
-                />
-              </div>
-              <div className="subclass-info">
-                <h4>{build.subclass.displayProperties.name}</h4>
-                {build.subclass.recommendedAspects && (
-                  <div className="aspects">
-                    <strong>Aspects:</strong>
-                    <ul>
-                      {build.subclass.recommendedAspects.map((aspect, index) => (
-                        <li key={index}>{aspect}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {build.subclass.recommendedFragments && (
-                  <div className="fragments">
-                    <strong>Fragments:</strong>
-                    <ul>
-                      {build.subclass.recommendedFragments.map((fragment, index) => (
-                        <li key={index}>{fragment}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {build.seasonalArtifact && (
-          <div className="artifact-section">
-            <h3>Seasonal Artifact</h3>
-            <div className="artifact-mods">
-              {build.seasonalArtifact.recommendedMods?.map((mod, index) => (
-                <div key={index} className="artifact-mod">
-                  <span className="mod-name">{mod}</span>
+                  <div className="trigger-condition">{trigger.condition}</div>
+                  {trigger.effect && (
+                    <div className="trigger-effect">{trigger.effect}</div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
+
+        {intelligence.synergies && intelligence.synergies.length > 0 && (
+          <div className="analysis-section">
+            <h4>
+              Build Synergies
+              <button 
+                className="toggle-btn"
+                onClick={() => toggleSection('synergies')}
+              >
+                {expandedSections.synergies ? '−' : '+'}
+              </button>
+            </h4>
+            {expandedSections.synergies && (
+              <div className="synergy-list">
+                {intelligence.synergies.map((synergy, index) => (
+                  <div key={index} className={`synergy-item strength-${synergy.strength}`}>
+                    <div className="synergy-header">
+                      <span className="synergy-items">
+                        {synergy.items.map(item => item.name).join(' + ')}
+                      </span>
+                      <span className="synergy-strength">
+                        {synergy.strength >= 0.8 ? 'Strong' : 
+                         synergy.strength >= 0.5 ? 'Good' : 'Weak'}
+                      </span>
+                    </div>
+                    <div className="synergy-description">{synergy.description}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderEnhancedScoring = () => {
+    if (!enhancedScore) {
+      return (
+        <div className="scoring-loading">
+          {isAnalyzing ? 'Analyzing build...' : 'No scoring data available'}
+        </div>
+      )
+    }
+
+    return (
+      <div className="enhanced-scoring">
+        <div className="overall-score">
+          <div className={`score-circle ${getScoreColor(enhancedScore.totalScore)}`}>
+            <span className="score-value">{Math.round(enhancedScore.totalScore)}</span>
+            <span className="score-label">Overall</span>
+          </div>
+        </div>
+
+        <div className="score-breakdown">
+          {Object.entries(enhancedScore.breakdown || {}).map(([category, score]) => (
+            <div key={category} className="score-category">
+              <div className="category-header">
+                <span className="category-name">{category}</span>
+                <span className="category-score">{Math.round(score)}</span>
+              </div>
+              <div className="category-bar">
+                <div 
+                  className={`category-fill ${getScoreColor(score)}`}
+                  style={{ width: `${Math.min(score, 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {enhancedScore.recommendations && enhancedScore.recommendations.length > 0 && (
+          <div className="recommendations">
+            <h4>
+              Optimization Suggestions
+              <button 
+                className="toggle-btn"
+                onClick={() => toggleSection('optimizations')}
+              >
+                {expandedSections.optimizations ? '−' : '+'}
+              </button>
+            </h4>
+            {expandedSections.optimizations && (
+              <div className="recommendation-list">
+                {enhancedScore.recommendations.map((rec, index) => (
+                  <div key={index} className={`recommendation-item priority-${rec.priority}`}>
+                    <div className="recommendation-header">
+                      <span className="recommendation-type">{rec.type}</span>
+                      <span className="recommendation-impact">+{rec.expectedImprovement}</span>
+                    </div>
+                    <div className="recommendation-description">{rec.description}</div>
+                    {rec.alternatives && (
+                      <div className="recommendation-alternatives">
+                        <strong>Try:</strong> {rec.alternatives.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderBuildAlternatives = () => {
+    if (!build.alternatives || build.alternatives.length === 0) return null
+
+    return (
+      <div className="build-alternatives">
+        <h3>
+          Alternative Builds
+          <button 
+            className="toggle-btn"
+            onClick={() => toggleSection('alternatives')}
+          >
+            {expandedSections.alternatives ? '−' : '+'}
+          </button>
+        </h3>
+        {expandedSections.alternatives && (
+          <div className="alternatives-list">
+            {build.alternatives.map((alt, index) => (
+              <div key={index} className="alternative-item">
+                <div className="alternative-header">
+                  <span className="alternative-name">{alt.name}</span>
+                  <span className="alternative-score">{Math.round(alt.score)}</span>
+                </div>
+                <div className="alternative-description">{alt.description}</div>
+                <div className="alternative-differences">
+                  <strong>Key Changes:</strong>
+                  <ul>
+                    {alt.changes.map((change, i) => (
+                      <li key={i}>{change}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (!build) {
+    return (
+      <div className="build-display-empty">
+        <p>No build to display</p>
+        <button onClick={onNewSearch}>Create New Build</button>
+      </div>
+    )
+  }
+
+  const statNames = {
+    2996146975: 'Mobility',
+    392767087: 'Resilience',
+    1943323491: 'Recovery',
+    1735777505: 'Discipline',
+    144602215: 'Intellect',
+    4244567218: 'Strength'
+  }
+
+  return (
+    <div className="build-display">
+      <div className="build-header">
+        <h2>{build.name || 'Generated Build'}</h2>
+        <div className="build-actions">
+          <button onClick={onNewSearch} className="new-search-btn">
+            New Build
+          </button>
+          <button className="save-build-btn">Save Build</button>
+          <button className="share-build-btn">Share</button>
+        </div>
       </div>
 
-      {showSaveDialog && (
-        <div className="save-dialog-overlay">
-          <div className="save-dialog">
-            <h3>Save Build</h3>
-            <div className="form-group">
-              <label>Build Name:</label>
-              <input
-                type="text"
-                value={buildName}
-                onChange={(e) => setBuildName(e.target.value)}
-                placeholder="Enter a name for your build"
-              />
+      <div className="build-tabs">
+        <button 
+          className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button 
+          className={`tab ${activeTab === 'analysis' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analysis')}
+        >
+          Intelligence Analysis
+        </button>
+        <button 
+          className={`tab ${activeTab === 'scoring' ? 'active' : ''}`}
+          onClick={() => setActiveTab('scoring')}
+        >
+          Enhanced Scoring
+        </button>
+        <button 
+          className={`tab ${activeTab === 'alternatives' ? 'active' : ''}`}
+          onClick={() => setActiveTab('alternatives')}
+        >
+          Alternatives
+        </button>
+      </div>
+
+      <div className="build-content">
+        {activeTab === 'overview' && (
+          <div className="overview-tab">
+            {/* Stats Section */}
+            <div className="stats-section">
+              <h3>Stats</h3>
+              <div className="stats-grid">
+                {Object.entries(statNames).map(([statHash, statName]) => 
+                  renderStatBar(statName, statHash, getStatValue(statHash))
+                )}
+              </div>
+              <div className="total-stats">
+                Total: {Object.values(build.stats || {}).reduce((sum, val) => sum + val, 0)}
+              </div>
             </div>
-            <div className="form-group">
-              <label>Description:</label>
-              <textarea
-                value={buildDescription}
-                onChange={(e) => setBuildDescription(e.target.value)}
-                placeholder="Describe when to use this build"
-                rows={3}
-              />
+
+            {/* Equipment Section */}
+            <div className="equipment-section">
+              <h3>Equipment</h3>
+              <div className="equipment-grid">
+                {build.armor && Object.entries(build.armor).map(([slot, item]) => (
+                  <div key={slot} className="equipment-item">
+                    <div className="item-header">
+                      <span className="item-slot">{slot}</span>
+                      <span className={`item-tier ${item.tier?.toLowerCase()}`}>
+                        {item.tier}
+                      </span>
+                    </div>
+                    <div className="item-name">{item.name}</div>
+                    {item.description && (
+                      <div className="item-description">{item.description}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="dialog-actions">
-              <button onClick={() => setShowSaveDialog(false)} className="cancel-btn">
-                Cancel
-              </button>
-              <button onClick={saveBuild} className="save-btn" disabled={!buildName.trim()}>
-                Save Build
-              </button>
-            </div>
+
+            {/* Quick Analysis */}
+            {build.analysis?.request && (
+              <div className="quick-analysis">
+                <h3>Build Summary</h3>
+                <div className="analysis-summary">
+                  <div className="request-interpretation">
+                    <strong>Request:</strong> {build.analysis.request.interpretation}
+                  </div>
+                  {build.analysis.request.activityType && (
+                    <div className="activity-focus">
+                      <strong>Activity Focus:</strong> {build.analysis.request.activityType}
+                    </div>
+                  )}
+                  {build.analysis.request.statPriorities && (
+                    <div className="stat-priorities">
+                      <strong>Stat Priorities:</strong> {build.analysis.request.statPriorities.join(', ')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
+        )}
+
+        {activeTab === 'analysis' && (
+          <div className="analysis-tab">
+            {renderIntelligenceAnalysis()}
+          </div>
+        )}
+
+        {activeTab === 'scoring' && (
+          <div className="scoring-tab">
+            {renderEnhancedScoring()}
+          </div>
+        )}
+
+        {activeTab === 'alternatives' && (
+          <div className="alternatives-tab">
+            {renderBuildAlternatives()}
+          </div>
+        )}
+      </div>
+
+      {build.metadata && (
+        <div className="build-metadata">
+          <div className="metadata-item">
+            <span>Generated:</span>
+            <span>{new Date(build.metadata.generatedAt).toLocaleString()}</span>
+          </div>
+          {build.metadata.processingTime && (
+            <div className="metadata-item">
+              <span>Processing Time:</span>
+              <span>{build.metadata.processingTime}ms</span>
+            </div>
+          )}
+          {build.metadata.intelligenceVersion && (
+            <div className="metadata-item">
+              <span>Intelligence Version:</span>
+              <span>{build.metadata.intelligenceVersion}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
