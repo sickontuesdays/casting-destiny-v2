@@ -1,6 +1,4 @@
-// pages/_app.js
 import { createContext, useState, useEffect } from 'react'
-import { SessionProvider } from 'next-auth/react'
 import manifestManager from '../lib/manifest-manager'
 import buildScorer from '../lib/build-scorer'
 import { BuildIntelligence } from '../lib/destiny-intelligence/build-intelligence'
@@ -9,7 +7,7 @@ import '../styles/destiny-theme.css'
 
 export const AppContext = createContext()
 
-function MyApp({ Component, pageProps: { session, ...pageProps } }) {
+function MyApp({ Component, pageProps }) {
   const [manifest, setManifest] = useState(null)
   const [buildIntelligence, setBuildIntelligence] = useState(null)
   const [intelligenceStatus, setIntelligenceStatus] = useState({
@@ -137,9 +135,8 @@ function MyApp({ Component, pageProps: { session, ...pageProps } }) {
   }
 
   return (
-    <SessionProvider session={session}>
-      <AppContext.Provider value={contextValue}>
-        <div className="app">
+    <AppContext.Provider value={contextValue}>
+      <div className="app">
           {/* Intelligence Status Indicator */}
           {intelligenceStatus.isLoading && (
             <div className="intelligence-loading-banner">
@@ -174,7 +171,6 @@ function MyApp({ Component, pageProps: { session, ...pageProps } }) {
           <Component {...pageProps} />
         </div>
       </AppContext.Provider>
-    </SessionProvider>
   )
 }
 

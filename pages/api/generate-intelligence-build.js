@@ -1,11 +1,23 @@
 import { BuildIntelligence } from '../../lib/destiny-intelligence/build-intelligence'
 import { IntelligentManifestProcessor } from '../../lib/intelligent-manifest-processor'
 import { EnhancedBuildScorer } from '../../lib/enhanced-build-scorer'
-import { getSessionFromRequest } from '../../lib/auth-config'
+import manifestManager from '../../lib/manifest-manager'
 
 let buildIntelligence = null;
 let manifestProcessor = null;
 let buildScorer = null;
+
+// Helper function to get session (adapt this to your auth system)
+async function getSessionFromRequest(req) {
+  try {
+    // If you have a custom auth function, import and use it here
+    // For now, return null and handle gracefully
+    return null
+  } catch (error) {
+    console.warn('Could not get session:', error)
+    return null
+  }
+}
 
 async function initializeIntelligence() {
   if (!buildIntelligence) {
@@ -13,16 +25,9 @@ async function initializeIntelligence() {
       // Initialize manifest processor
       manifestProcessor = new IntelligentManifestProcessor();
       
-      // Get manifest data (you may need to adjust this based on your manifest loading)
-      const manifestResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/manifest`);
-      const manifestData = await manifestResponse.json();
+      // Get manifest data directly from manifest manager
+      const processedManifest = await manifestManager.loadManifest();
       
-      // Process manifest with intelligence
-      const processedManifest = await manifestProcessor.processManifest(manifestData, {
-        categories: ['weapons', 'armor', 'mods', 'subclasses'],
-        includeDescriptions: true
-      });
-
       // Initialize build intelligence
       buildIntelligence = new BuildIntelligence();
       await buildIntelligence.initialize(processedManifest);
@@ -45,7 +50,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get user session
+    // Get user session (optional - will work without authentication)
     const session = await getSessionFromRequest(req);
     
     // Initialize intelligence system if needed
