@@ -2,162 +2,181 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/useAuth'
 
 export default function FriendSystem() {
-  const { session } = useAuth()
+  const { session, isLoading } = useAuth()
   const [friends, setFriends] = useState([])
-  const [clanMembers, setClanMembers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('friends')
-  const [selectedFriend, setSelectedFriend] = useState(null)
-  const [message, setMessage] = useState('')
+  const [pendingRequests, setPendingRequests] = useState([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (session) {
-      loadFriendsAndClan()
+    if (session?.user) {
+      loadFriends()
+      loadPendingRequests()
     }
   }, [session])
 
-  const loadFriendsAndClan = async () => {
+  const loadFriends = async () => {
     try {
-      const [friendsResponse, clanResponse] = await Promise.all([
-        fetch('/api/friends?type=destiny-friends'),
-        fetch('/api/friends?type=clan-members')
-      ])
+      const response = await fetch('/api/friends', {
+        method: 'GET',
+        credentials: 'include'
+      })
 
-      const friendsData = await friendsResponse.json()
-      const clanData = await clanResponse.json()
-
-      setFriends(friendsData)
-      setClanMembers(clanData)
+      if (response.ok) {
+        const data = await response.json()
+        setFriends(data.friends || [])
+      } else {
+        console.error('Failed to load friends')
+      }
     } catch (error) {
-      console.error('Error loading friends and clan:', error)
+      console.error('Error loading friends:', error)
+      setError('Failed to load friends')
+    }
+  }
+
+  const loadPendingRequests = async () => {
+    try {
+      const response = await fetch('/api/friends?type=pending', {
+        method: 'GET',
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setPendingRequests(data.requests || [])
+      }
+    } catch (error) {
+      console.error('Error loading pending requests:', error)
+    }
+  }
+
+  const searchUsers = async (searchTerm) => {
+    if (!searchTerm.trim()) {
+      setSearchResults([])
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const response = await fetch('/api/friends/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ searchTerm })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSearchResults(data.users || [])
+      } else {
+        setSearchResults([])
+      }
+    } catch (error) {
+      console.error('Error searching users:', error)
+      setSearchResults([])
     } finally {
-      setLoading(false)
+      setIsSearching(false)
     }
   }
 
-  const sendMessage = async () => {
-    if (!message.trim() || !selectedFriend) return
-
+  const sendFriendRequest = async (targetUserId) => {
     try {
-      const response = await fetch('/api/friends', {
+      const response = await fetch('/api/friends/request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'send-message',
-          friendId: selectedFriend.membershipId,
-          message: message.trim()
-        })
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ targetUserId })
       })
 
       if (response.ok) {
-        setMessage('')
-        // Show success notification
-        alert('Message sent! (Note: This is a simplified implementation)')
+        // Remove from search results or update UI
+        setSearchResults(prev => 
+          prev.map(user => 
+            user.membershipId === targetUserId 
+              ? { ...user, requestSent: true }
+              : user
+          )
+        )
+      } else {
+        const error = await response.json()
+        setError(error.error || 'Failed to send friend request')
       }
     } catch (error) {
-      console.error('Error sending message:', error)
+      console.error('Error sending friend request:', error)
+      setError('Failed to send friend request')
     }
   }
 
-  const shareBuild = async (friendId, buildData) => {
+  const respondToRequest = async (requestId, accept) => {
     try {
-      const response = await fetch('/api/friends', {
+      const response = await fetch('/api/friends/respond', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'share-build',
-          friendId,
-          buildId: buildData.id
-        })
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ requestId, accept })
       })
 
       if (response.ok) {
-        alert('Build shared successfully!')
+        // Reload friends and pending requests
+        loadFriends()
+        loadPendingRequests()
+      } else {
+        setError('Failed to respond to friend request')
       }
     } catch (error) {
-      console.error('Error sharing build:', error)
+      console.error('Error responding to friend request:', error)
+      setError('Failed to respond to friend request')
     }
   }
 
-  const renderFriendsList = (friendsList, title) => (
-    <div className="friends-list">
-      <h4>{title}</h4>
-      {friendsList.length === 0 ? (
-        <div className="no-friends">
-          <p>No {title.toLowerCase()} found</p>
-        </div>
-      ) : (
-        <div className="friends-grid">
-          {friendsList.map((friend) => (
-            <div 
-              key={friend.membershipId}
-              className={`friend-card ${friend.isOnline ? 'online' : 'offline'} ${!friend.hasUsedApp ? 'not-registered' : ''}`}
-              onClick={() => setSelectedFriend(friend)}
-            >
-              <div className="friend-avatar">
-                {friend.profilePicture ? (
-                  <img 
-                    src={`https://www.bungie.net${friend.profilePicture}`}
-                    alt={friend.displayName}
-                  />
-                ) : (
-                  <div className="default-avatar">
-                    {friend.displayName.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className={`status-indicator ${friend.isOnline ? 'online' : 'offline'}`}></div>
-              </div>
-              
-              <div className="friend-info">
-                <div className="friend-name">{friend.displayName}</div>
-                <div className="friend-status">
-                  {friend.isOnline ? (
-                    friend.lastPlayed ? `Playing ${friend.lastPlayed.activity}` : 'Online'
-                  ) : (
-                    friend.lastSeen ? `Last seen ${friend.lastSeen}` : 'Offline'
-                  )}
-                </div>
-                {!friend.hasUsedApp && (
-                  <div className="app-status">Not using Casting Destiny</div>
-                )}
-              </div>
+  const removeFriend = async (friendId) => {
+    try {
+      const response = await fetch('/api/friends/remove', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ friendId })
+      })
 
-              {friend.hasUsedApp && (
-                <div className="friend-actions">
-                  <button 
-                    className="message-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedFriend(friend)
-                    }}
-                  >
-                    💬
-                  </button>
-                  <button 
-                    className="share-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      // This would open a build selection dialog
-                      alert('Build sharing coming soon!')
-                    }}
-                  >
-                    📤
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+      if (response.ok) {
+        setFriends(prev => prev.filter(friend => friend.membershipId !== friendId))
+      } else {
+        setError('Failed to remove friend')
+      }
+    } catch (error) {
+      console.error('Error removing friend:', error)
+      setError('Failed to remove friend')
+    }
+  }
 
-  if (loading) {
+  const handleSearchSubmit = (e) => {
+    e.preventDefault()
+    searchUsers(searchTerm)
+  }
+
+  if (isLoading) {
     return (
       <div className="friend-system">
-        <div className="loading-friends">
-          <div className="loading-spinner"></div>
-          <p>Loading friends and clan members...</p>
+        <div className="loading">Loading friends...</div>
+      </div>
+    )
+  }
+
+  if (!session?.user) {
+    return (
+      <div className="friend-system">
+        <div className="auth-required">
+          <p>Sign in to view and manage your friends</p>
         </div>
       </div>
     )
@@ -165,72 +184,130 @@ export default function FriendSystem() {
 
   return (
     <div className="friend-system">
-      <div className="friends-tabs">
-        <button 
-          className={`tab ${activeTab === 'friends' ? 'active' : ''}`}
-          onClick={() => setActiveTab('friends')}
-        >
-          Friends ({friends.length})
-        </button>
-        <button 
-          className={`tab ${activeTab === 'clan' ? 'active' : ''}`}
-          onClick={() => setActiveTab('clan')}
-        >
-          Clan ({clanMembers.length})
-        </button>
+      <div className="friend-system-header">
+        <h3>Friends</h3>
       </div>
 
-      <div className="friends-content">
-        {activeTab === 'friends' && renderFriendsList(friends, 'Destiny Friends')}
-        {activeTab === 'clan' && renderFriendsList(clanMembers, 'Clan Members')}
-      </div>
+      {error && (
+        <div className="error-message">
+          <span>{error}</span>
+          <button onClick={() => setError(null)}>×</button>
+        </div>
+      )}
 
-      {selectedFriend && (
-        <div className="message-panel">
-          <div className="message-header">
-            <h4>Message {selectedFriend.displayName}</h4>
-            <button 
-              className="close-message"
-              onClick={() => setSelectedFriend(null)}
-            >
-              ×
-            </button>
-          </div>
-          
-          <div className="message-content">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Type your message..."
-              rows={3}
-              className="message-input"
-            />
-            
-            <div className="message-actions">
-              <button 
-                onClick={sendMessage}
-                disabled={!message.trim()}
-                className="send-btn"
-              >
-                Send Message
-              </button>
+      {/* Search Section */}
+      <div className="friend-search">
+        <form onSubmit={handleSearchSubmit}>
+          <input
+            type="text"
+            placeholder="Search for players by Bungie name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
+          <button type="submit" disabled={isSearching}>
+            {isSearching ? 'Searching...' : 'Search'}
+          </button>
+        </form>
+
+        {searchResults.length > 0 && (
+          <div className="search-results">
+            <h4>Search Results</h4>
+            <div className="user-list">
+              {searchResults.map(user => (
+                <div key={user.membershipId} className="user-item">
+                  <div className="user-info">
+                    <span className="user-name">{user.displayName}</span>
+                    <span className="user-code">#{user.bungieGlobalDisplayNameCode}</span>
+                  </div>
+                  <div className="user-actions">
+                    {user.requestSent ? (
+                      <span className="request-sent">Request Sent</span>
+                    ) : user.isFriend ? (
+                      <span className="already-friend">Already Friends</span>
+                    ) : (
+                      <button 
+                        onClick={() => sendFriendRequest(user.membershipId)}
+                        className="add-friend-btn"
+                      >
+                        Add Friend
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+        )}
+      </div>
 
-          <div className="quick-actions">
-            <h5>Quick Actions:</h5>
-            <button className="quick-action">Share Current Build</button>
-            <button className="quick-action">Invite to Fireteam</button>
-            <button className="quick-action">View Profile</button>
+      {/* Pending Requests */}
+      {pendingRequests.length > 0 && (
+        <div className="pending-requests">
+          <h4>Pending Friend Requests</h4>
+          <div className="request-list">
+            {pendingRequests.map(request => (
+              <div key={request.id} className="request-item">
+                <div className="request-info">
+                  <span className="requester-name">{request.requesterName}</span>
+                  <span className="request-date">
+                    {new Date(request.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="request-actions">
+                  <button 
+                    onClick={() => respondToRequest(request.id, true)}
+                    className="accept-btn"
+                  >
+                    Accept
+                  </button>
+                  <button 
+                    onClick={() => respondToRequest(request.id, false)}
+                    className="decline-btn"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      <div className="friends-info">
-        <p className="info-text">
-          Friends and clan members who haven't used Casting Destiny yet appear greyed out. 
-          They'll be able to receive shared builds and messages once they sign in.
-        </p>
+      {/* Friends List */}
+      <div className="friends-list">
+        <h4>Your Friends ({friends.length})</h4>
+        {friends.length === 0 ? (
+          <div className="no-friends">
+            <p>No friends yet. Search for players above to add them!</p>
+          </div>
+        ) : (
+          <div className="friend-list">
+            {friends.map(friend => (
+              <div key={friend.membershipId} className="friend-item">
+                <div className="friend-info">
+                  <span className="friend-name">{friend.displayName}</span>
+                  <span className="friend-status">
+                    {friend.isOnline ? 'Online' : 'Offline'}
+                  </span>
+                  {friend.lastPlayed && (
+                    <span className="last-played">
+                      Last played: {new Date(friend.lastPlayed).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <div className="friend-actions">
+                  <button 
+                    onClick={() => removeFriend(friend.membershipId)}
+                    className="remove-friend-btn"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
