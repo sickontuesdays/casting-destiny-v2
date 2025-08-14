@@ -60,10 +60,6 @@ const nextConfig = {
           {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin'
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.bungie.net https://bungie.net; connect-src 'self' https://www.bungie.net https://bungie.net; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
           }
         ]
       }
@@ -105,28 +101,7 @@ const nextConfig = {
       }
     }
 
-    // Enable WebAssembly (if needed for future optimizations)
-    config.experiments = {
-      asyncWebAssembly: true,
-      layers: true,
-    }
-
     return config
-  },
-
-  // Experimental features
-  experimental: {
-    // Enable App Router when ready to migrate
-    appDir: false,
-    
-    // Optimize server components
-    serverComponentsExternalPackages: ['jose'],
-    
-    // Runtime optimizations
-    runtime: 'nodejs',
-    
-    // Enable SWC plugins if needed
-    swcPlugins: [],
   },
 
   // Compiler options
@@ -152,27 +127,8 @@ const nextConfig = {
   // Generate ETags
   generateEtags: true,
 
-  // Development-specific configurations
-  ...(process.env.NODE_ENV === 'development' && {
-    onDemandEntries: {
-      // Period (in ms) where the server will keep pages in the buffer
-      maxInactiveAge: 25 * 1000,
-      // Number of pages that should be kept simultaneously without being disposed
-      pagesBufferLength: 2,
-    }
-  }),
-
   // Production optimizations
-  ...(process.env.NODE_ENV === 'production' && {
-    // Disable source maps in production for better performance
-    productionBrowserSourceMaps: false,
-    
-    // Optimize images
-    images: {
-      ...nextConfig.images,
-      minimumCacheTTL: 60 * 60 * 24 * 7, // 1 week
-    }
-  })
+  productionBrowserSourceMaps: false,
 }
 
 module.exports = nextConfig
