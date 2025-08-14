@@ -8,48 +8,80 @@ import BuildDisplay from '../components/BuildDisplay'
 import UserInventory from '../components/UserInventory'
 
 export default function Home() {
-  const { session, loading } = useAuth()
-  const { manifest, loading: manifestLoading } = useContext(AppContext)
+  const { session, isLoading: authLoading } = useAuth()
+  const { intelligenceStatus, isIntelligenceReady } = useContext(AppContext)
   const [currentBuild, setCurrentBuild] = useState(null)
   const [buildRequest, setBuildRequest] = useState('')
   const [useInventoryOnly, setUseInventoryOnly] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
   const [authError, setAuthError] = useState('')
+  const [showInventory, setShowInventory] = useState(false)
   const router = useRouter()
 
   // Check for authentication errors in URL
   useEffect(() => {
     if (router.query.error) {
       setAuthError(router.query.error)
+      // Clear error from URL
+      router.replace('/', undefined, { shallow: true })
     }
   }, [router.query.error])
 
-  if (loading || manifestLoading) {
+  // Show loading screen while systems initialize
+  if (authLoading || intelligenceStatus.isLoading) {
     return (
       <div className="loading-screen">
-        <div className="destiny-loader"></div>
-        <p>Loading Destiny 2 data...</p>
+        <div className="destiny-loader">
+          <div className="loader-spinner"></div>
+        </div>
+        <div className="loading-text">
+          <h2>Casting Destiny v2</h2>
+          <p>
+            {authLoading 
+              ? 'Connecting to Bungie...' 
+              : 'Initializing AI Intelligence System...'
+            }
+          </p>
+          {intelligenceStatus.features.length > 0 && (
+            <div className="loading-features">
+              <small>Loading: {intelligenceStatus.features.join(', ')}</small>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
 
+  // Show login screen for unauthenticated users
   if (!session) {
     return (
       <div className="login-screen">
         <div className="login-container">
-          <h1>Casting Destiny v2</h1>
-          <p>Create the perfect Destiny 2 build for any situation</p>
+          <div className="app-header">
+            <h1>Casting Destiny v2</h1>
+            <p className="app-tagline">AI-Powered Build Optimization for Destiny 2</p>
+          </div>
+          
+          <div className="features-preview">
+            <h3>What's New in v2</h3>
+            <ul>
+              <li>🧠 Natural Language Build Requests</li>
+              <li>⚡ Advanced Synergy Analysis</li>
+              <li>🎯 Activity-Specific Optimization</li>
+              <li>👥 Social Build Sharing</li>
+              <li>📊 Enhanced Performance Scoring</li>
+            </ul>
+          </div>
           
           {authError && (
-            <div className="error-message" style={{
-              background: 'rgba(231, 111, 81, 0.2)',
-              border: '1px solid #e76f51',
-              borderRadius: '0.5rem',
-              padding: '1rem',
-              margin: '1rem 0',
-              color: '#e76f51'
-            }}>
+            <div className="error-message">
               <strong>Login Error:</strong> {authError}
+              <button 
+                onClick={() => setAuthError('')}
+                className="error-close"
+              >
+                ×
+              </button>
             </div>
           )}
           
@@ -57,8 +89,16 @@ export default function Home() {
             className="bungie-login-btn"
             onClick={() => window.location.href = '/api/auth/bungie-login'}
           >
+            <img src="/bungie-logo.svg" alt="Bungie" />
             Sign in with Bungie.net
           </button>
+          
+          <div className="disclaimer">
+            <p>
+              This app requires access to your Destiny 2 character data to generate 
+              personalized build recommendations.
+            </p>
+          </div>
         </div>
       </div>
     )
@@ -66,65 +106,142 @@ export default function Home() {
 
   const handleBuildGenerated = (build) => {
     setCurrentBuild(build)
+    setShowInventory(false)
   }
 
   const handleNewSearch = () => {
     setCurrentBuild(null)
     setBuildRequest('')
+    setLockedExotic(null)
+  }
+
+  const handleInventoryToggle = () => {
+    setShowInventory(!showInventory)
+  }
+
+  const handleExoticLocked = (exotic) => {
+    setLockedExotic(exotic)
+    setShowInventory(false)
   }
 
   return (
     <div className="home-container">
       <div className="main-content">
-        {!currentBuild ? (
-          <div className="build-creator-section">
-            <div className="header-section">
-              <h1>Build Creator</h1>
-              <p>Describe what you want your build to do, or specify an exotic to build around</p>
-            </div>
+        {/* Intelligence System Status */}
+        {!isIntelligenceReady() && (
+          <div className="system-warning">
+            <span className="warning-icon">⚠️</span>
+            <span>AI features are currently unavailable. Basic functionality is still available.</span>
+          </div>
+        )}
 
-            <div className="input-section">
-              <NaturalLanguageInput
-                value={buildRequest}
-                onChange={setBuildRequest}
-                onSubmit={handleBuildGenerated}
-                lockedExotic={lockedExotic}
-                useInventoryOnly={useInventoryOnly}
-                session={session}
-              />
-              
-              <div className="build-options">
-                <label className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    checked={useInventoryOnly}
-                    onChange={(e) => setUseInventoryOnly(e.target.checked)}
+        {!currentBuild ? (
+          <div className="build-creation-view">
+            {/* Main Build Creation Interface */}
+            <div className="creation-panel">
+              <div className="panel-header">
+                <h2>Create Your Perfect Build</h2>
+                <p>Describe what you want or use the advanced creator</p>
+              </div>
+
+              {/* Natural Language Input */}
+              <div className="input-section">
+                <NaturalLanguageInput
+                  onBuildGenerated={handleBuildGenerated}
+                  buildRequest={buildRequest}
+                  setBuildRequest={setBuildRequest}
+                  useInventoryOnly={useInventoryOnly}
+                  lockedExotic={lockedExotic}
+                  disabled={!isIntelligenceReady()}
+                />
+              </div>
+
+              {/* Quick Options */}
+              <div className="quick-options">
+                <div className="option-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={useInventoryOnly}
+                      onChange={(e) => setUseInventoryOnly(e.target.checked)}
+                    />
+                    <span>Use only items in my inventory</span>
+                  </label>
+                </div>
+
+                <button 
+                  className="inventory-btn"
+                  onClick={handleInventoryToggle}
+                >
+                  {showInventory ? 'Hide Inventory' : 'View My Inventory'}
+                </button>
+              </div>
+
+              {/* Locked Exotic Display */}
+              {lockedExotic && (
+                <div className="locked-exotic">
+                  <span>🔒 Build will include: {lockedExotic.name}</span>
+                  <button onClick={() => setLockedExotic(null)}>Remove</button>
+                </div>
+              )}
+
+              {/* Advanced Creator Fallback */}
+              <div className="advanced-creator-section">
+                <details>
+                  <summary>Advanced Build Creator</summary>
+                  <BuildCreator
+                    onBuildGenerated={handleBuildGenerated}
+                    useInventoryOnly={useInventoryOnly}
+                    lockedExotic={lockedExotic}
                   />
-                  Use only items from my inventory
-                </label>
+                </details>
               </div>
             </div>
 
-            <BuildCreator
-              onExoticSelected={setLockedExotic}
-              selectedExotic={lockedExotic}
-            />
+            {/* Inventory Panel */}
+            {showInventory && (
+              <div className="inventory-panel">
+                <UserInventory onExoticLocked={handleExoticLocked} />
+              </div>
+            )}
           </div>
         ) : (
-          <div className="build-display-section">
-            <BuildDisplay
-              build={currentBuild}
+          /* Build Display View */
+          <div className="build-display-view">
+            <BuildDisplay 
+              build={currentBuild} 
               onNewSearch={handleNewSearch}
-              useInventoryOnly={useInventoryOnly}
-              session={session}
             />
           </div>
         )}
       </div>
 
-      <div className="sidebar">
-        <UserInventory session={session} />
-      </div>
+      {/* Quick Actions Sidebar */}
+      <aside className="quick-actions">
+        <div className="action-buttons">
+          <button 
+            className="action-btn"
+            onClick={() => router.push('/builds')}
+            title="My Saved Builds"
+          >
+            📋
+          </button>
+          <button 
+            className="action-btn"
+            onClick={handleInventoryToggle}
+            title="Toggle Inventory"
+          >
+            🎒
+          </button>
+          <button 
+            className="action-btn"
+            onClick={() => router.push('/admin')}
+            title="Admin Panel"
+          >
+            ⚙️
+          </button>
+        </div>
+      </aside>
     </div>
   )
 }

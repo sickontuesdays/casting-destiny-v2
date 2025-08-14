@@ -1,25 +1,31 @@
 {
   "name": "casting-destiny-v2",
-  "version": "1.0.0",
-  "description": "Destiny 2 Build Crafting Tool",
+  "version": "2.0.0",
+  "description": "AI-Powered Destiny 2 Build Optimization Tool",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "clean": "rm -rf .next out"
   },
   "dependencies": {
-    "next": "^14.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "axios": "^1.6.0",
+    "next": "^14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.6.2",
     "jose": "^5.1.3",
     "lodash": "^4.17.21",
-    "date-fns": "^2.30.0"
+    "date-fns": "^3.0.6",
+    "sqlite3": "^5.1.6",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "eslint": "^8.0.0",
-    "eslint-config-next": "^14.0.0"
+    "eslint": "^8.55.0",
+    "eslint-config-next": "^14.0.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

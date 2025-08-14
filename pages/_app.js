@@ -1,8 +1,9 @@
 import React, { useState, useEffect, createContext, useContext } from 'react'
+import Layout from '../components/Layout'
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
 
-// Create AppContext
+// Create AppContext for global state management
 const AppContext = createContext({
   manifest: null,
   buildIntelligence: null,
@@ -22,7 +23,6 @@ const AppContext = createContext({
 })
 
 export { AppContext }
-
 export const useAppContext = () => useContext(AppContext)
 
 function MyApp({ Component, pageProps }) {
@@ -38,7 +38,6 @@ function MyApp({ Component, pageProps }) {
     version: null
   })
 
-  // Initialize intelligence system on app start
   useEffect(() => {
     initializeIntelligenceSystem()
   }, [])
@@ -53,10 +52,16 @@ function MyApp({ Component, pageProps }) {
     try {
       console.log('🧠 Initializing Intelligence System...')
 
-      // Import intelligence system components
-      const { default: ManifestManager } = await import('../lib/manifest-manager')
-      const { EnhancedBuildScorer } = await import('../lib/enhanced-build-scorer')
-      const { BuildIntelligence } = await import('../lib/destiny-intelligence/build-intelligence')
+      // Import intelligence components dynamically
+      const [
+        { default: ManifestManager },
+        { EnhancedBuildScorer },
+        { BuildIntelligence }
+      ] = await Promise.all([
+        import('../lib/manifest-manager'),
+        import('../lib/enhanced-build-scorer'),
+        import('../lib/destiny-intelligence/build-intelligence')
+      ])
 
       // Initialize manifest manager
       const manifestMgr = new ManifestManager()
@@ -76,7 +81,6 @@ function MyApp({ Component, pageProps }) {
       await scorer.initialize(manifestData)
       setBuildScorer(scorer)
 
-      // Update status
       setIntelligenceStatus({
         isLoading: false,
         isInitialized: true,
@@ -86,15 +90,16 @@ function MyApp({ Component, pageProps }) {
           'Synergy Analysis',
           'Build Optimization',
           'Exotic Recommendations',
-          'Stat Calculations'
+          'Stat Calculations',
+          'Activity-Specific Builds'
         ],
-        version: manifestData?.version || '1.0.0'
+        version: manifestData?.version || '2.0.0'
       })
 
       console.log('✅ Intelligence System initialized successfully!')
 
     } catch (error) {
-      console.error('❌ Failed to initialize intelligence system:', error)
+      console.error('❌ Intelligence System initialization failed:', error)
       setIntelligenceStatus({
         isLoading: false,
         isInitialized: false,
@@ -105,107 +110,77 @@ function MyApp({ Component, pageProps }) {
     }
   }
 
-  const refreshIntelligence = async (forceRefresh = false) => {
-    console.log('🔄 Refreshing intelligence system...')
+  const refreshIntelligence = async (force = false) => {
+    if (intelligenceStatus.isLoading) return false
     
-    try {
-      setIntelligenceStatus(prev => ({
-        ...prev,
-        isLoading: true,
-        error: null
-      }))
-
-      // Refresh manifest
-      if (manifestManager) {
-        const refreshedManifest = await manifestManager.loadManifest(forceRefresh)
-        setManifest(refreshedManifest)
-
-        // Re-initialize intelligence components with refreshed data
-        if (buildIntelligence) {
-          await buildIntelligence.initialize(refreshedManifest)
-        }
-        if (buildScorer) {
-          await buildScorer.initialize(refreshedManifest)
-        }
-      }
-
-      setIntelligenceStatus(prev => ({
-        ...prev,
-        isLoading: false,
-        version: manifest?.version
-      }))
-
-      console.log('✅ Intelligence system refreshed successfully')
+    if (force || !intelligenceStatus.isInitialized) {
+      await initializeIntelligenceSystem()
       return true
-
-    } catch (error) {
-      console.error('❌ Failed to refresh intelligence system:', error)
-      setIntelligenceStatus(prev => ({
-        ...prev,
-        error: error.message
-      }))
-      return false
     }
+    return false
+  }
+
+  const isIntelligenceReady = () => {
+    return intelligenceStatus.isInitialized && !intelligenceStatus.error
+  }
+
+  const getIntelligenceFeatures = () => {
+    return intelligenceStatus.features
+  }
+
+  const getSystemVersion = () => {
+    return intelligenceStatus.version
   }
 
   const contextValue = {
-    // Core manifest data
     manifest,
-    
-    // Intelligence components
     buildIntelligence,
     buildScorer,
     manifestManager,
-    
-    // System status
     intelligenceStatus,
-    
-    // Utility functions
     refreshIntelligence,
-    
-    // Quick access methods
-    isIntelligenceReady: () => intelligenceStatus.isInitialized && !intelligenceStatus.error,
-    getIntelligenceFeatures: () => intelligenceStatus.features,
-    getSystemVersion: () => intelligenceStatus.version
+    isIntelligenceReady,
+    getIntelligenceFeatures,
+    getSystemVersion
   }
 
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="app">
-          {/* Intelligence Status Indicator */}
-          {intelligenceStatus.isLoading && (
-            <div className="intelligence-loading-banner">
-              <div className="loading-content">
-                <div className="loading-spinner"></div>
-                <span>🧠 Initializing Intelligence System...</span>
-              </div>
+      <Layout>
+        {/* Intelligence Status Indicators */}
+        {intelligenceStatus.isLoading && (
+          <div className="intelligence-loading-banner">
+            <div className="loading-content">
+              <div className="loading-spinner"></div>
+              <span>🧠 Initializing Intelligence System...</span>
             </div>
-          )}
+          </div>
+        )}
 
-          {intelligenceStatus.error && (
-            <div className="intelligence-error-banner">
-              <div className="error-content">
-                <span>⚠️ Intelligence System Error: {intelligenceStatus.error}</span>
-                <button 
-                  onClick={() => refreshIntelligence(true)}
-                  className="retry-btn"
-                >
-                  Retry
-                </button>
-              </div>
+        {intelligenceStatus.error && (
+          <div className="intelligence-error-banner">
+            <div className="error-content">
+              <span>⚠️ Intelligence System Error: {intelligenceStatus.error}</span>
+              <button 
+                onClick={() => refreshIntelligence(true)}
+                className="retry-btn"
+              >
+                Retry
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {intelligenceStatus.isInitialized && !intelligenceStatus.error && (
-            <div className="intelligence-ready-indicator">
-              <span className="ready-dot"></span>
-              <span>AI Enhanced</span>
-            </div>
-          )}
+        {intelligenceStatus.isInitialized && !intelligenceStatus.error && (
+          <div className="intelligence-ready-indicator">
+            <span className="ready-dot"></span>
+            <span>AI Enhanced</span>
+          </div>
+        )}
 
-          <Component {...pageProps} />
-        </div>
-      </AppContext.Provider>
+        <Component {...pageProps} />
+      </Layout>
+    </AppContext.Provider>
   )
 }
 

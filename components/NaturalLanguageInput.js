@@ -1,219 +1,201 @@
-import { useState, useContext, useEffect } from 'react'
+import { useState, useContext, useRef, useEffect } from 'react'
 import { AppContext } from '../pages/_app'
-import { BuildIntelligence } from '../lib/destiny-intelligence/build-intelligence'
 
 export default function NaturalLanguageInput({ 
-  value, 
-  onChange, 
-  onSubmit, 
-  lockedExotic, 
-  useInventoryOnly,
-  session
+  onBuildGenerated, 
+  buildRequest, 
+  setBuildRequest,
+  useInventoryOnly = false,
+  lockedExotic = null,
+  disabled = false 
 }) {
-  const { manifest } = useContext(AppContext)
+  const { buildIntelligence, isIntelligenceReady } = useContext(AppContext)
   const [isGenerating, setIsGenerating] = useState(false)
   const [suggestions, setSuggestions] = useState([])
-  const [buildIntelligence, setBuildIntelligence] = useState(null)
-  const [analysisPreview, setAnalysisPreview] = useState(null)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [error, setError] = useState(null)
+  const [parsePreview, setParsePreview] = useState(null)
+  const inputRef = useRef(null)
 
-  // Initialize build intelligence
+  // Sample suggestions for user guidance
+  const sampleRequests = [
+    "High mobility Hunter build for PvP",
+    "Titan build with maximum resilience for raids",
+    "Warlock build focused on grenade spam",
+    "Build around Celestial Nighthawk for DPS",
+    "Solar build with high recovery for dungeon runs",
+    "Void build for crowd control in strikes"
+  ]
+
   useEffect(() => {
-    if (manifest) {
-      const intelligence = new BuildIntelligence();
-      intelligence.initialize(manifest).then(() => {
-        setBuildIntelligence(intelligence);
-      });
-    }
-  }, [manifest]);
-
-  const handleInputChange = async (e) => {
-    const input = e.target.value
-    onChange(input)
-    
-    // Generate intelligent suggestions and preview analysis
-    if (input.length > 2 && buildIntelligence) {
-      await generateIntelligentSuggestions(input)
-      await generateAnalysisPreview(input)
+    if (buildRequest.length > 3) {
+      debouncePreview(buildRequest)
     } else {
-      setSuggestions([])
-      setAnalysisPreview(null)
+      setParsePreview(null)
     }
-  }
+  }, [buildRequest])
 
-  const generateIntelligentSuggestions = async (input) => {
+  const debouncePreview = (() => {
+    let timeoutId
+    return (input) => {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        generatePreview(input)
+      }, 500)
+    }
+  })()
+
+  const generatePreview = async (input) => {
+    if (!isIntelligenceReady() || !buildIntelligence) return
+
     try {
-      const intelligentSuggestions = await buildIntelligence.generateBuildSuggestions(input, {
-        maxSuggestions: 5,
-        includeExotic: !!lockedExotic,
-        prioritizeInventory: useInventoryOnly
-      });
-
-      // Combine intelligent suggestions with fallback suggestions
-      const fallbackSuggestions = [
-        'High DPS build for boss damage',
-        'PVP build for Crucible',
-        'Add clear build for strikes',
-        'Survivability build for GMs',
-        'Support build for raids',
-        'Grenade spam build',
-        'Void 3.0 devour build',
-        'Solar 3.0 healing build',
-        'Arc 3.0 chain lightning build'
-      ].filter(suggestion =>
-        suggestion.toLowerCase().includes(input.toLowerCase())
-      );
-
-      const combinedSuggestions = [
-        ...intelligentSuggestions.map(s => s.suggestion),
-        ...fallbackSuggestions
-      ].slice(0, 5);
-
-      setSuggestions(combinedSuggestions);
+      const parsed = await buildIntelligence.parseRequest(input)
+      setParsePreview(parsed)
     } catch (error) {
-      console.error('Error generating intelligent suggestions:', error);
-      // Fallback to simple suggestions
-      const simpleSuggestions = [
-        'High DPS build for boss damage',
-        'PVP build for Crucible',
-        'Add clear build for strikes',
-        'Survivability build for GMs'
-      ].filter(suggestion =>
-        suggestion.toLowerCase().includes(input.toLowerCase())
-      ).slice(0, 5);
-      
-      setSuggestions(simpleSuggestions);
+      console.error('Error generating preview:', error)
     }
   }
 
-  const generateAnalysisPreview = async (input) => {
-    try {
-      const preview = await buildIntelligence.analyzeRequest(input, {
-        includeKeywords: true,
-        includeSynergies: true,
-        includeStatPriorities: true
-      });
+  const handleInputChange = (e) => {
+    const value = e.target.value
+    setBuildRequest(value)
+    setError(null)
 
-      setAnalysisPreview(preview);
-    } catch (error) {
-      console.error('Error generating analysis preview:', error);
-      setAnalysisPreview(null);
+    // Show suggestions when input is empty or short
+    if (value.length <= 2) {
+      setSuggestions(sampleRequests)
+      setShowSuggestions(true)
+    } else {
+      setShowSuggestions(false)
     }
   }
 
-  const handleSubmit = async (inputText = value) => {
-    if (!inputText.trim() || !manifest || !buildIntelligence) return
+  const handleSuggestionClick = (suggestion) => {
+    setBuildRequest(suggestion)
+    setShowSuggestions(false)
+    inputRef.current?.focus()
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!buildRequest.trim()) {
+      setError('Please describe the build you want to create')
+      return
+    }
+
+    if (!isIntelligenceReady()) {
+      setError('AI Intelligence system is not ready. Please try again in a moment.')
+      return
+    }
 
     setIsGenerating(true)
-    setSuggestions([])
+    setError(null)
 
     try {
-      // Use intelligent build generation
-      const intelligentBuild = await buildIntelligence.generateOptimalBuild(inputText, {
-        lockedExotic,
-        useInventoryOnly,
-        userSession: session,
-        includeAnalysis: true,
-        maxAlternatives: 3
-      });
-
-      onSubmit(intelligentBuild)
-    } catch (error) {
-      console.error('Error generating intelligent build:', error)
+      console.log('🤖 Generating build from request:', buildRequest)
       
-      // Fallback to API endpoint
-      try {
-        const response = await fetch('/api/generate-intelligent-build', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            request: inputText,
-            lockedExotic,
-            useInventoryOnly,
-            sessionId: session?.user?.id
-          })
-        });
-
-        if (response.ok) {
-          const build = await response.json();
-          onSubmit(build);
-        } else {
-          throw new Error('API request failed');
-        }
-      } catch (apiError) {
-        console.error('API fallback failed:', apiError);
-        // Show error to user
+      const buildOptions = {
+        useInventoryOnly,
+        lockedExotic,
+        includeAlternatives: true,
+        detailedAnalysis: true,
+        optimizationSuggestions: true
       }
+
+      const result = await buildIntelligence.generateBuild(buildRequest, buildOptions)
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      console.log('✅ Build generated successfully:', result)
+      onBuildGenerated(result)
+      
+    } catch (error) {
+      console.error('❌ Build generation failed:', error)
+      setError(error.message || 'Failed to generate build. Please try again.')
     } finally {
       setIsGenerating(false)
     }
   }
 
-  const handleSuggestionClick = (suggestion) => {
-    onChange(suggestion)
-    setSuggestions([])
-    handleSubmit(suggestion)
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+  }
+
+  const getStatusMessage = () => {
+    if (isGenerating) return 'Generating your perfect build...'
+    if (disabled) return 'AI Intelligence system is loading...'
+    if (!isIntelligenceReady()) return 'Intelligence system unavailable'
+    return 'Describe your ideal build'
   }
 
   return (
     <div className="natural-language-input">
-      <div className="input-container">
-        <textarea
-          value={value}
-          onChange={handleInputChange}
-          placeholder="Describe what you want your build to do... (e.g., 'High DPS void build with grenades for raids' or 'PVP build focused on mobility and hand cannons')"
-          className="language-input"
-          rows={3}
-          disabled={isGenerating}
-        />
-        
-        <button 
-          onClick={() => handleSubmit()}
-          disabled={!value.trim() || isGenerating || !buildIntelligence}
-          className="generate-build-btn"
-        >
-          {isGenerating ? 'Generating Intelligent Build...' : 'Generate Build'}
-        </button>
-      </div>
-
-      {/* Analysis Preview */}
-      {analysisPreview && !isGenerating && (
-        <div className="analysis-preview">
-          <div className="analysis-header">Build Analysis Preview:</div>
-          <div className="analysis-content">
-            {analysisPreview.keywords && (
-              <div className="keywords">
-                <span className="label">Keywords:</span>
-                {analysisPreview.keywords.map((keyword, index) => (
-                  <span key={index} className="keyword-tag">{keyword}</span>
-                ))}
-              </div>
-            )}
-            {analysisPreview.statPriorities && (
-              <div className="stat-priorities">
-                <span className="label">Focus Stats:</span>
-                <span className="stats">{analysisPreview.statPriorities.join(', ')}</span>
-              </div>
-            )}
-            {analysisPreview.expectedSynergies && analysisPreview.expectedSynergies.length > 0 && (
-              <div className="synergies">
-                <span className="label">Expected Synergies:</span>
-                <span className="synergy-count">{analysisPreview.expectedSynergies.length} detected</span>
-              </div>
-            )}
+      <form onSubmit={handleSubmit} className="input-form">
+        <div className="input-container">
+          <div className="input-wrapper">
+            <textarea
+              ref={inputRef}
+              value={buildRequest}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onFocus={() => !buildRequest && setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              placeholder="Describe your ideal build... (e.g., 'High mobility Hunter build for PvP')"
+              className={`build-input ${error ? 'error' : ''}`}
+              disabled={disabled || isGenerating}
+              rows={3}
+            />
+            
+            <div className="input-status">
+              <span className={`status-text ${isGenerating ? 'generating' : ''}`}>
+                {getStatusMessage()}
+              </span>
+              {isIntelligenceReady() && (
+                <span className="ai-indicator">🧠 AI Enhanced</span>
+              )}
+            </div>
           </div>
+
+          <button
+            type="submit"
+            disabled={disabled || isGenerating || !buildRequest.trim() || !isIntelligenceReady()}
+            className="generate-btn"
+          >
+            {isGenerating ? (
+              <>
+                <div className="loading-spinner"></div>
+                Generating...
+              </>
+            ) : (
+              'Generate Build'
+            )}
+          </button>
         </div>
-      )}
 
-      {/* Intelligent Suggestions */}
-      {suggestions.length > 0 && (
-        <div className="suggestions">
-          <div className="suggestions-header">
-            {buildIntelligence ? 'Intelligent Suggestions:' : 'Suggestions:'}
+        {/* Error Display */}
+        {error && (
+          <div className="error-message">
+            <span className="error-icon">⚠️</span>
+            <span>{error}</span>
           </div>
-          <div className="suggestions-list">
+        )}
+
+        {/* Suggestions Dropdown */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="suggestions-dropdown">
+            <div className="suggestions-header">
+              <span>Try these examples:</span>
+            </div>
             {suggestions.map((suggestion, index) => (
               <button
                 key={index}
+                type="button"
                 className="suggestion-item"
                 onClick={() => handleSuggestionClick(suggestion)}
               >
@@ -221,34 +203,60 @@ export default function NaturalLanguageInput({
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Loading State */}
-      {isGenerating && (
-        <div className="generating-overlay">
-          <div className="generating-spinner"></div>
-          <p>
-            {buildIntelligence 
-              ? 'Analyzing synergies and optimizing your build...' 
-              : 'Crafting your build...'
-            }
-          </p>
-          <div className="generating-details">
-            <span>• Parsing build requirements</span>
-            <span>• Calculating stat synergies</span>
-            <span>• Optimizing item combinations</span>
-            <span>• Validating build viability</span>
+        {/* Parse Preview */}
+        {parsePreview && !showSuggestions && (
+          <div className="parse-preview">
+            <h4>I understand you want:</h4>
+            <div className="preview-grid">
+              {parsePreview.entities?.classes?.length > 0 && (
+                <div className="preview-item">
+                  <span className="preview-label">Class:</span>
+                  <span className="preview-value">{parsePreview.entities.classes.join(', ')}</span>
+                </div>
+              )}
+              {parsePreview.entities?.activities?.length > 0 && (
+                <div className="preview-item">
+                  <span className="preview-label">Activity:</span>
+                  <span className="preview-value">{parsePreview.entities.activities.join(', ')}</span>
+                </div>
+              )}
+              {parsePreview.entities?.stats?.length > 0 && (
+                <div className="preview-item">
+                  <span className="preview-label">Focus Stats:</span>
+                  <span className="preview-value">{parsePreview.entities.stats.join(', ')}</span>
+                </div>
+              )}
+              {parsePreview.entities?.exotics?.length > 0 && (
+                <div className="preview-item">
+                  <span className="preview-label">Exotics:</span>
+                  <span className="preview-value">{parsePreview.entities.exotics.join(', ')}</span>
+                </div>
+              )}
+              <div className="preview-item">
+                <span className="preview-label">Confidence:</span>
+                <span className="preview-value">{Math.round(parsePreview.confidence * 100)}%</span>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Intelligence Status */}
-      {!buildIntelligence && manifest && (
-        <div className="intelligence-status">
-          <span>🧠 Initializing build intelligence...</span>
-        </div>
-      )}
+        {/* Build Options Summary */}
+        {(useInventoryOnly || lockedExotic) && (
+          <div className="build-options">
+            <h4>Build Constraints:</h4>
+            <ul>
+              {useInventoryOnly && (
+                <li>✓ Using only items from your inventory</li>
+              )}
+              {lockedExotic && (
+                <li>🔒 Build will include: {lockedExotic.name}</li>
+              )}
+            </ul>
+          </div>
+        )}
+      </form>
     </div>
   )
 }

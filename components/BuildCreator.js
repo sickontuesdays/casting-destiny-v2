@@ -1,375 +1,352 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useContext } from 'react'
 import { AppContext } from '../pages/_app'
-import { BuildIntelligence } from '../lib/destiny-intelligence/build-intelligence'
-import { SynergyEngine } from '../lib/destiny-intelligence/synergy-engine'
 
-export default function BuildCreator({ onExoticSelected, selectedExotic, session }) {
-  const { manifest } = useContext(AppContext)
-  const [exotics, setExotics] = useState([])
-  const [filteredExotics, setFilteredExotics] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedClass, setSelectedClass] = useState('all')
-  const [selectedSlot, setSelectedSlot] = useState('all')
-  const [buildIntelligence, setBuildIntelligence] = useState(null)
-  const [synergyEngine, setSynergyEngine] = useState(null)
-  const [intelligentSuggestions, setIntelligentSuggestions] = useState([])
-  const [synergyPreview, setSynergyPreview] = useState(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+export default function BuildCreator({ onBuildGenerated, useInventoryOnly = false, lockedExotic = null }) {
+  const { buildIntelligence, manifest, isIntelligenceReady } = useContext(AppContext)
+  const [selectedClass, setSelectedClass] = useState('any')
+  const [selectedActivity, setSelectedActivity] = useState('general_pve')
+  const [selectedPlaystyle, setSelectedPlaystyle] = useState('balanced')
+  const [focusStats, setFocusStats] = useState([])
+  const [selectedElement, setSelectedElement] = useState('any')
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [error, setError] = useState(null)
 
-  // Initialize intelligence systems
-  useEffect(() => {
-    if (manifest) {
-      const initializeIntelligence = async () => {
-        try {
-          const intelligence = new BuildIntelligence()
-          await intelligence.initialize(manifest)
-          setBuildIntelligence(intelligence)
+  const classes = [
+    { value: 'any', label: 'Any Class' },
+    { value: 'titan', label: 'Titan' },
+    { value: 'hunter', label: 'Hunter' },
+    { value: 'warlock', label: 'Warlock' }
+  ]
 
-          const synergy = new SynergyEngine()
-          await synergy.initialize(manifest)
-          setSynergyEngine(synergy)
+  const activities = [
+    { value: 'general_pve', label: 'General PvE' },
+    { value: 'raid', label: 'Raid' },
+    { value: 'pvp', label: 'PvP/Crucible' },
+    { value: 'dungeon', label: 'Dungeon' },
+    { value: 'nightfall', label: 'Nightfall' },
+    { value: 'gambit', label: 'Gambit' },
+    { value: 'trials', label: 'Trials of Osiris' },
+    { value: 'strikes', label: 'Strikes' }
+  ]
 
-          // Get intelligent exotic suggestions
-          const suggestions = await intelligence.getTopExoticSuggestions({
-            limit: 6,
-            includePopular: true,
-            includeMeta: true,
-            includeVersatile: true
-          })
-          setIntelligentSuggestions(suggestions)
-        } catch (error) {
-          console.error('Failed to initialize intelligence systems:', error)
-        }
-      }
+  const playstyles = [
+    { value: 'balanced', label: 'Balanced' },
+    { value: 'aggressive', label: 'Aggressive' },
+    { value: 'defensive', label: 'Defensive' },
+    { value: 'support', label: 'Support' },
+    { value: 'dps', label: 'DPS/Damage' },
+    { value: 'speed', label: 'Speed/Mobility' }
+  ]
 
-      initializeIntelligence()
-    }
-  }, [manifest])
+  const stats = [
+    { value: 'weapons', label: 'Weapons' },
+    { value: 'health', label: 'Health' },
+    { value: 'class', label: 'Class Ability' },
+    { value: 'super', label: 'Super' },
+    { value: 'grenade', label: 'Grenade' },
+    { value: 'melee', label: 'Melee' }
+  ]
 
-  // Load exotic armor pieces
-  useEffect(() => {
-    if (manifest) {
-      loadExoticArmor()
-    }
-  }, [manifest])
+  const elements = [
+    { value: 'any', label: 'Any Element' },
+    { value: 'solar', label: 'Solar' },
+    { value: 'arc', label: 'Arc' },
+    { value: 'void', label: 'Void' },
+    { value: 'stasis', label: 'Stasis' },
+    { value: 'strand', label: 'Strand' }
+  ]
 
-  // Filter exotics based on search and filters
-  useEffect(() => {
-    filterExotics()
-  }, [exotics, searchTerm, selectedClass, selectedSlot])
-
-  // Analyze synergies when exotic is selected
-  useEffect(() => {
-    if (selectedExotic && synergyEngine) {
-      analyzeSynergies()
-    }
-  }, [selectedExotic, synergyEngine])
-
-  const loadExoticArmor = async () => {
-    try {
-      const armorItems = await manifest.getItemsByCategory('armor')
-      const exoticArmor = []
-
-      for (const [hash, item] of armorItems) {
-        if (item.tier === 'Exotic' && item.itemType === 2) { // Armor items
-          exoticArmor.push({
-            ...item,
-            hash: hash
-          })
-        }
-      }
-
-      // Sort by name
-      exoticArmor.sort((a, b) => a.name.localeCompare(b.name))
-      setExotics(exoticArmor)
-    } catch (error) {
-      console.error('Error loading exotic armor:', error)
-    }
+  const handleStatToggle = (statValue) => {
+    setFocusStats(prev => 
+      prev.includes(statValue) 
+        ? prev.filter(s => s !== statValue)
+        : [...prev, statValue]
+    )
   }
 
-  const filterExotics = () => {
-    let filtered = exotics
-
-    // Text search
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase()
-      filtered = filtered.filter(exotic => 
-        exotic.name.toLowerCase().includes(search) ||
-        exotic.description.toLowerCase().includes(search) ||
-        (exotic.intelligence?.triggers?.some(t => 
-          t.type.toLowerCase().includes(search) ||
-          t.condition.toLowerCase().includes(search)
-        ))
-      )
+  const generateBuildRequest = () => {
+    const parts = []
+    
+    if (selectedClass !== 'any') {
+      parts.push(selectedClass)
     }
-
-    // Class filter
-    if (selectedClass !== 'all') {
-      const classTypeMap = { 'titan': 0, 'hunter': 1, 'warlock': 2 }
-      filtered = filtered.filter(exotic => exotic.classType === classTypeMap[selectedClass])
+    
+    if (selectedActivity !== 'general_pve') {
+      parts.push(`for ${selectedActivity}`)
     }
-
-    // Slot filter
-    if (selectedSlot !== 'all') {
-      const slotMap = {
-        'helmet': 'Helmet',
-        'gauntlets': 'Gauntlets', 
-        'chest': 'Chest Armor',
-        'legs': 'Leg Armor'
-      }
-      filtered = filtered.filter(exotic => exotic.armorType === slotMap[selectedSlot])
+    
+    if (focusStats.length > 0) {
+      parts.push(`with high ${focusStats.join(' and ')}`)
     }
-
-    setFilteredExotics(filtered)
+    
+    if (selectedPlaystyle !== 'balanced') {
+      parts.push(`${selectedPlaystyle} playstyle`)
+    }
+    
+    if (selectedElement !== 'any') {
+      parts.push(`${selectedElement} build`)
+    }
+    
+    if (lockedExotic) {
+      parts.push(`using ${lockedExotic.name}`)
+    }
+    
+    return parts.join(' ') || 'balanced build for general content'
   }
 
-  const analyzeSynergies = async () => {
-    if (!selectedExotic || !synergyEngine) return
+  const handleGenerate = async () => {
+    if (!isIntelligenceReady()) {
+      setError('AI Intelligence system is not ready. Please wait a moment and try again.')
+      return
+    }
 
-    setIsAnalyzing(true)
+    setIsGenerating(true)
+    setError(null)
+
     try {
-      const synergies = await synergyEngine.findSynergies(selectedExotic.hash, {
-        includeWeapons: true,
-        includeMods: true,
-        includeSubclasses: true,
-        maxResults: 10
-      })
+      const buildRequest = generateBuildRequest()
+      console.log('🏗️ Generating build with request:', buildRequest)
+      
+      const buildOptions = {
+        useInventoryOnly,
+        lockedExotic,
+        includeAlternatives: true,
+        detailedAnalysis: true,
+        optimizationSuggestions: true
+      }
 
-      setSynergyPreview({
-        exotic: selectedExotic,
-        synergies: synergies,
-        score: synergies.reduce((sum, s) => sum + s.strength, 0)
-      })
+      const result = await buildIntelligence.generateBuild(buildRequest, buildOptions)
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      console.log('✅ Build generated successfully:', result)
+      onBuildGenerated(result)
+      
     } catch (error) {
-      console.error('Error analyzing synergies:', error)
-      setSynergyPreview(null)
+      console.error('❌ Build generation failed:', error)
+      setError(error.message || 'Failed to generate build. Please try again.')
     } finally {
-      setIsAnalyzing(false)
+      setIsGenerating(false)
     }
   }
 
-  const handleExoticClick = (exotic) => {
-    onExoticSelected(exotic)
-  }
-
-  const getClassIcon = (classType) => {
-    const classNames = ['Titan', 'Hunter', 'Warlock']
-    return classNames[classType] || 'Unknown'
-  }
-
-  const getSlotIcon = (armorType) => {
-    const slotIcons = {
-      'Helmet': '🪖',
-      'Gauntlets': '🧤',
-      'Chest Armor': '🛡️',
-      'Leg Armor': '🦵'
+  const handleQuickPreset = (preset) => {
+    switch (preset) {
+      case 'pvp_hunter':
+        setSelectedClass('hunter')
+        setSelectedActivity('pvp')
+        setSelectedPlaystyle('aggressive')
+        setFocusStats(['weapons', 'class'])
+        break
+      case 'raid_titan':
+        setSelectedClass('titan')
+        setSelectedActivity('raid')
+        setSelectedPlaystyle('defensive')
+        setFocusStats(['health', 'super'])
+        break
+      case 'warlock_ability':
+        setSelectedClass('warlock')
+        setSelectedActivity('general_pve')
+        setSelectedPlaystyle('support')
+        setFocusStats(['grenade', 'super'])
+        break
+      default:
+        break
     }
-    return slotIcons[armorType] || '⚙️'
   }
 
-  const getIntelligenceBadge = (exotic) => {
-    if (!exotic.intelligence) return null
-
-    const triggerCount = exotic.intelligence.triggers?.length || 0
-    const complexity = exotic.intelligence.metadata?.complexity || 0
-
-    if (triggerCount === 0) return null
-
-    if (complexity > 3) return 'Complex'
-    if (complexity > 1) return 'Synergy'
-    return 'Simple'
+  const resetForm = () => {
+    setSelectedClass('any')
+    setSelectedActivity('general_pve')
+    setSelectedPlaystyle('balanced')
+    setFocusStats([])
+    setSelectedElement('any')
+    setError(null)
   }
 
   return (
     <div className="build-creator">
-      <div className="exotic-selection-section">
-        <div className="section-header">
-          <h3>Select Exotic Armor (Optional)</h3>
-          <p>Choose an exotic to build around, or leave empty for AI to suggest the best option</p>
+      <div className="creator-header">
+        <h3>Advanced Build Creator</h3>
+        <p>Configure your build parameters manually</p>
+      </div>
+
+      {/* Quick Presets */}
+      <div className="quick-presets">
+        <h4>Quick Presets</h4>
+        <div className="preset-buttons">
+          <button 
+            onClick={() => handleQuickPreset('pvp_hunter')}
+            className="preset-btn"
+          >
+            PvP Hunter
+          </button>
+          <button 
+            onClick={() => handleQuickPreset('raid_titan')}
+            className="preset-btn"
+          >
+            Raid Titan
+          </button>
+          <button 
+            onClick={() => handleQuickPreset('warlock_ability')}
+            className="preset-btn"
+          >
+            Ability Warlock
+          </button>
+        </div>
+      </div>
+
+      <div className="creator-form">
+        {/* Class Selection */}
+        <div className="form-group">
+          <label>Guardian Class</label>
+          <select 
+            value={selectedClass} 
+            onChange={(e) => setSelectedClass(e.target.value)}
+            className="form-select"
+          >
+            {classes.map(cls => (
+              <option key={cls.value} value={cls.value}>
+                {cls.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Intelligent Suggestions */}
-        {intelligentSuggestions.length > 0 && (
-          <div className="intelligent-suggestions">
-            <h4>🧠 Recommended Exotics</h4>
-            <div className="suggestion-grid">
-              {intelligentSuggestions.map((suggestion, index) => (
-                <div 
-                  key={index}
-                  className={`suggestion-card ${selectedExotic?.hash === suggestion.hash ? 'selected' : ''}`}
-                  onClick={() => handleExoticClick(suggestion)}
-                >
-                  <div className="suggestion-header">
-                    <span className="suggestion-name">{suggestion.name}</span>
-                    <span className="suggestion-badge">{suggestion.reason}</span>
-                  </div>
-                  <div className="suggestion-description">
-                    {suggestion.shortDescription}
-                  </div>
-                  {suggestion.synergies && (
-                    <div className="suggestion-synergies">
-                      <span>🔗 {suggestion.synergies} synergies</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+        {/* Activity Selection */}
+        <div className="form-group">
+          <label>Primary Activity</label>
+          <select 
+            value={selectedActivity} 
+            onChange={(e) => setSelectedActivity(e.target.value)}
+            className="form-select"
+          >
+            {activities.map(activity => (
+              <option key={activity.value} value={activity.value}>
+                {activity.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Playstyle Selection */}
+        <div className="form-group">
+          <label>Playstyle</label>
+          <select 
+            value={selectedPlaystyle} 
+            onChange={(e) => setSelectedPlaystyle(e.target.value)}
+            className="form-select"
+          >
+            {playstyles.map(style => (
+              <option key={style.value} value={style.value}>
+                {style.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Stat Focus */}
+        <div className="form-group">
+          <label>Focus Stats (Select multiple)</label>
+          <div className="stat-checkboxes">
+            {stats.map(stat => (
+              <label key={stat.value} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={focusStats.includes(stat.value)}
+                  onChange={() => handleStatToggle(stat.value)}
+                />
+                <span>{stat.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Element Selection */}
+        <div className="form-group">
+          <label>Subclass Element</label>
+          <select 
+            value={selectedElement} 
+            onChange={(e) => setSelectedElement(e.target.value)}
+            className="form-select"
+          >
+            {elements.map(element => (
+              <option key={element.value} value={element.value}>
+                {element.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Locked Exotic Display */}
+        {lockedExotic && (
+          <div className="form-group">
+            <label>Locked Exotic</label>
+            <div className="locked-exotic-display">
+              <span className="exotic-name">🔒 {lockedExotic.name}</span>
+              <span className="exotic-description">{lockedExotic.description}</span>
             </div>
           </div>
         )}
 
-        {/* Search and Filters */}
-        <div className="search-filters">
-          <input
-            type="text"
-            placeholder="Search exotics by name, description, or abilities..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
+        {/* Build Preview */}
+        <div className="form-group">
+          <label>Build Description Preview</label>
+          <div className="build-preview">
+            <p>"{generateBuildRequest()}"</p>
+          </div>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="error-message">
+            <span className="error-icon">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="form-actions">
+          <button 
+            onClick={resetForm}
+            className="reset-btn"
+            disabled={isGenerating}
+          >
+            Reset
+          </button>
           
-          <div className="filters">
-            <select 
-              value={selectedClass} 
-              onChange={(e) => setSelectedClass(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Classes</option>
-              <option value="titan">Titan</option>
-              <option value="hunter">Hunter</option>
-              <option value="warlock">Warlock</option>
-            </select>
-
-            <select 
-              value={selectedSlot} 
-              onChange={(e) => setSelectedSlot(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Slots</option>
-              <option value="helmet">Helmet</option>
-              <option value="gauntlets">Gauntlets</option>
-              <option value="chest">Chest Armor</option>
-              <option value="legs">Leg Armor</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Selected Exotic Preview */}
-        {selectedExotic && (
-          <div className="selected-exotic-preview">
-            <div className="preview-header">
-              <h4>Selected: {selectedExotic.name}</h4>
-              <button 
-                onClick={() => onExoticSelected(null)}
-                className="clear-selection-btn"
-              >
-                Clear Selection
-              </button>
-            </div>
-            <div className="preview-content">
-              <div className="preview-info">
-                <span className="preview-class">{getClassIcon(selectedExotic.classType)}</span>
-                <span className="preview-slot">{getSlotIcon(selectedExotic.armorType)}</span>
-                {selectedExotic.intelligence && (
-                  <span className="preview-intelligence">
-                    🧠 {getIntelligenceBadge(selectedExotic)}
-                  </span>
-                )}
-              </div>
-              <div className="preview-description">
-                {selectedExotic.description}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Synergy Preview */}
-        {synergyPreview && (
-          <div className="synergy-preview">
-            <div className="synergy-header">
-              <h4>🔗 Synergy Analysis</h4>
-              {isAnalyzing && <span className="analyzing">Analyzing...</span>}
-            </div>
-            {synergyPreview.synergies.length > 0 ? (
-              <div className="synergy-list">
-                {synergyPreview.synergies.slice(0, 3).map((synergy, index) => (
-                  <div key={index} className="synergy-item">
-                    <div className="synergy-info">
-                      <span className="synergy-name">{synergy.item.name}</span>
-                      <span className={`synergy-strength strength-${synergy.strength}`}>
-                        {synergy.strength >= 0.8 ? 'Strong' : synergy.strength >= 0.5 ? 'Good' : 'Weak'}
-                      </span>
-                    </div>
-                    <div className="synergy-reason">{synergy.reason}</div>
-                  </div>
-                ))}
-                {synergyPreview.synergies.length > 3 && (
-                  <div className="synergy-more">
-                    +{synergyPreview.synergies.length - 3} more synergies detected
-                  </div>
-                )}
-              </div>
+          <button 
+            onClick={handleGenerate}
+            className="generate-btn primary"
+            disabled={isGenerating || !isIntelligenceReady()}
+          >
+            {isGenerating ? (
+              <>
+                <div className="loading-spinner small"></div>
+                Generating...
+              </>
             ) : (
-              <div className="no-synergies">
-                No strong synergies detected. This exotic works well independently.
-              </div>
+              'Generate Build'
             )}
-          </div>
-        )}
-
-        {/* Exotic Grid */}
-        <div className="exotic-grid">
-          {filteredExotics.map((exotic) => (
-            <div
-              key={exotic.hash}
-              className={`exotic-card ${selectedExotic?.hash === exotic.hash ? 'selected' : ''}`}
-              onClick={() => handleExoticClick(exotic)}
-            >
-              <div className="exotic-header">
-                <div className="exotic-name">{exotic.name}</div>
-                <div className="exotic-meta">
-                  <span className="exotic-class">{getClassIcon(exotic.classType)}</span>
-                  <span className="exotic-slot">{getSlotIcon(exotic.armorType)}</span>
-                  {exotic.intelligence && (
-                    <span className="exotic-intelligence">
-                      {getIntelligenceBadge(exotic)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              
-              <div className="exotic-description">
-                {exotic.description.length > 120 
-                  ? `${exotic.description.substring(0, 120)}...`
-                  : exotic.description
-                }
-              </div>
-
-              {exotic.intelligence?.triggers && exotic.intelligence.triggers.length > 0 && (
-                <div className="exotic-triggers">
-                  <div className="trigger-count">
-                    {exotic.intelligence.triggers.length} trigger{exotic.intelligence.triggers.length > 1 ? 's' : ''}
-                  </div>
-                  <div className="trigger-preview">
-                    {exotic.intelligence.triggers[0].type}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+          </button>
         </div>
 
-        {filteredExotics.length === 0 && (
-          <div className="no-results">
-            <p>No exotic armor found matching your criteria.</p>
-            <button onClick={() => {
-              setSearchTerm('')
-              setSelectedClass('all')
-              setSelectedSlot('all')
-            }}>
-              Clear Filters
-            </button>
-          </div>
-        )}
+        {/* System Status */}
+        <div className="system-status">
+          {!isIntelligenceReady() && (
+            <div className="status-warning">
+              <span>⚠️ AI Intelligence system is loading...</span>
+            </div>
+          )}
+          
+          {useInventoryOnly && (
+            <div className="status-info">
+              <span>ℹ️ Using only items from your inventory</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

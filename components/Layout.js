@@ -1,11 +1,14 @@
 import { useState } from 'react'
+import { useRouter } from 'next/router'
 import { useAuth } from '../lib/useAuth'
 import FriendSystem from './FriendSystem'
 
 export default function Layout({ children }) {
-  const { session, isLoading, login, logout } = useAuth()
+  const { session, isLoading, logout } = useAuth()
   const [showFriends, setShowFriends] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const router = useRouter()
 
   const toggleFriends = () => {
     setShowFriends(!showFriends)
@@ -15,161 +18,244 @@ export default function Layout({ children }) {
     setShowMobileMenu(!showMobileMenu)
   }
 
+  const toggleUserMenu = () => {
+    setShowUserMenu(!showUserMenu)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.push('/')
+    } catch (error) {
+      console.error('Logout failed:', error)
+    }
+  }
+
+  const navItems = [
+    { href: '/', label: 'Build Creator', icon: '🏗️' },
+    { href: '/builds', label: 'My Builds', icon: '📋' },
+    { href: '/admin', label: 'Admin', icon: '⚙️' }
+  ]
+
   return (
     <div className="layout">
       {/* Header */}
       <header className="header">
         <div className="header-content">
           <div className="header-left">
-            <h1 className="app-title">
-              <span className="title-main">Casting Destiny</span>
-              <span className="title-version">v2</span>
-            </h1>
+            <button 
+              className="mobile-menu-toggle"
+              onClick={toggleMobileMenu}
+              aria-label="Toggle mobile menu"
+            >
+              ☰
+            </button>
+            
+            <div className="app-title" onClick={() => router.push('/')}>
+              <h1>
+                <span className="title-main">Casting Destiny</span>
+                <span className="title-version">v2</span>
+              </h1>
+              <span className="title-subtitle">AI-Powered Build Optimization</span>
+            </div>
           </div>
 
           <div className="header-center">
             <nav className={`main-nav ${showMobileMenu ? 'mobile-open' : ''}`}>
-              <a href="/" className="nav-link">Build Creator</a>
-              <a href="/builds" className="nav-link">My Builds</a>
-              <a href="/admin" className="nav-link">Admin</a>
+              {navItems.map(item => (
+                <a 
+                  key={item.href}
+                  href={item.href} 
+                  className={`nav-link ${router.pathname === item.href ? 'active' : ''}`}
+                  onClick={toggleMobileMenu}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
+                </a>
+              ))}
             </nav>
           </div>
 
           <div className="header-right">
             {isLoading ? (
               <div className="auth-loading">
+                <div className="loading-spinner small"></div>
                 <span>Loading...</span>
               </div>
             ) : session?.user ? (
               <div className="user-menu">
-                <div className="user-info">
-                  <img 
-                    src={session.user.avatar || '/default-avatar.png'} 
-                    alt="User Avatar"
-                    className="user-avatar"
-                    onError={(e) => {
-                      e.target.src = '/default-avatar.png'
-                    }}
-                  />
-                  <div className="user-details">
-                    <span className="user-name">{session.user.displayName}</span>
-                    <span className="user-code">#{session.user.displayNameCode}</span>
+                <button 
+                  className="user-menu-trigger"
+                  onClick={toggleUserMenu}
+                >
+                  <div className="user-info">
+                    <img 
+                      src={session.user.avatar || '/default-avatar.png'} 
+                      alt="User Avatar"
+                      className="user-avatar"
+                      onError={(e) => {
+                        e.target.src = '/default-avatar.png'
+                      }}
+                    />
+                    <div className="user-details">
+                      <span className="user-name">{session.user.displayName}</span>
+                      <span className="user-code">#{session.user.displayNameCode}</span>
+                    </div>
                   </div>
-                </div>
+                  <span className="dropdown-arrow">▼</span>
+                </button>
                 
-                <div className="user-actions">
-                  <button 
-                    onClick={toggleFriends}
-                    className={`friends-toggle ${showFriends ? 'active' : ''}`}
-                    title="Toggle Friends"
-                  >
-                    👥 Friends
-                  </button>
-                  
-                  <button 
-                    onClick={logout}
-                    className="logout-btn"
-                    title="Sign Out"
-                  >
-                    Sign Out
-                  </button>
-                </div>
+                {showUserMenu && (
+                  <div className="user-dropdown">
+                    <div className="dropdown-header">
+                      <span>{session.user.displayName}</span>
+                      <span className="user-membership">
+                        {session.user.membershipType === 1 ? 'Xbox' :
+                         session.user.membershipType === 2 ? 'PlayStation' :
+                         session.user.membershipType === 3 ? 'Steam' :
+                         session.user.membershipType === 6 ? 'Epic Games' : 'Bungie'}
+                      </span>
+                    </div>
+                    
+                    <div className="dropdown-actions">
+                      <button 
+                        onClick={() => {
+                          toggleFriends()
+                          setShowUserMenu(false)
+                        }}
+                        className="dropdown-item"
+                      >
+                        <span className="item-icon">👥</span>
+                        <span>Friends</span>
+                        {showFriends && <span className="active-indicator">●</span>}
+                      </button>
+                      
+                      <button 
+                        onClick={() => {
+                          router.push('/builds')
+                          setShowUserMenu(false)
+                        }}
+                        className="dropdown-item"
+                      >
+                        <span className="item-icon">📋</span>
+                        <span>My Builds</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => {
+                          router.push('/admin')
+                          setShowUserMenu(false)
+                        }}
+                        className="dropdown-item"
+                      >
+                        <span className="item-icon">⚙️</span>
+                        <span>Settings</span>
+                      </button>
+                      
+                      <div className="dropdown-divider"></div>
+                      
+                      <button 
+                        onClick={() => {
+                          handleLogout()
+                          setShowUserMenu(false)
+                        }}
+                        className="dropdown-item logout"
+                      >
+                        <span className="item-icon">🚪</span>
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="auth-actions">
                 <button 
-                  onClick={login}
                   className="login-btn"
+                  onClick={() => window.location.href = '/api/auth/bungie-login'}
                 >
-                  Sign in with Bungie
+                  Sign In
                 </button>
               </div>
             )}
-
-            {/* Mobile menu toggle */}
-            <button 
-              className="mobile-menu-toggle"
-              onClick={toggleMobileMenu}
-            >
-              ☰
-            </button>
           </div>
         </div>
-      </header>
 
-      {/* Main Content Area */}
-      <div className="main-layout">
-        {/* Sidebar for Friends */}
-        {session?.user && (
-          <aside className={`friends-sidebar ${showFriends ? 'open' : ''}`}>
-            <div className="sidebar-header">
-              <h3>Friends & Social</h3>
-              <button 
-                onClick={toggleFriends}
-                className="close-sidebar"
-              >
-                ×
-              </button>
-            </div>
-            <div className="sidebar-content">
-              <FriendSystem />
-            </div>
-          </aside>
-        )}
-
-        {/* Main Content */}
-        <main className={`main-content ${showFriends ? 'sidebar-open' : ''}`}>
-          {children}
-        </main>
-
-        {/* Overlay for mobile */}
-        {showFriends && (
+        {/* Mobile Menu Overlay */}
+        {showMobileMenu && (
           <div 
-            className="sidebar-overlay"
-            onClick={toggleFriends}
+            className="mobile-menu-overlay"
+            onClick={toggleMobileMenu}
           />
         )}
-      </div>
+      </header>
+
+      {/* Friends System Sidebar */}
+      {showFriends && session?.user && (
+        <div className="friends-sidebar">
+          <div className="friends-header">
+            <h3>Friends</h3>
+            <button 
+              onClick={toggleFriends}
+              className="close-friends"
+            >
+              ×
+            </button>
+          </div>
+          <FriendSystem />
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main className="main-content">
+        {children}
+      </main>
 
       {/* Footer */}
       <footer className="footer">
         <div className="footer-content">
           <div className="footer-section">
-            <h4>Casting Destiny v2</h4>
-            <p>AI-powered build creator for Destiny 2</p>
-          </div>
-          
-          <div className="footer-section">
-            <h4>Features</h4>
-            <ul>
-              <li>Intelligent Build Generation</li>
-              <li>Synergy Analysis</li>
-              <li>Stat Optimization</li>
-              <li>Natural Language Processing</li>
-            </ul>
-          </div>
-          
-          <div className="footer-section">
-            <h4>About</h4>
-            <p>
-              This app is not affiliated with or endorsed by Bungie, Inc. 
-              Destiny is a trademark of Bungie, Inc.
-            </p>
-          </div>
-        </div>
-        
-        <div className="footer-bottom">
-          <p>&copy; 2025 Casting Destiny v2. Built with Next.js and the Bungie API.</p>
-          {session?.user && (
-            <div className="user-status">
-              <span>Signed in as {session.user.displayName}</span>
-              <span className="connection-status">🟢 Connected</span>
+            <div className="footer-links">
+              <a href="/privacy" className="footer-link">Privacy Policy</a>
+              <a href="/terms" className="footer-link">Terms of Service</a>
+              <a href="/about" className="footer-link">About</a>
+              <a href="https://github.com/yourusername/casting-destiny-v2" target="_blank" rel="noopener noreferrer" className="footer-link">
+                GitHub
+              </a>
             </div>
-          )}
+            
+            <div className="footer-disclaimer">
+              <p>
+                This app is not affiliated with or endorsed by Bungie, Inc. 
+                Destiny is a trademark of Bungie, Inc.
+              </p>
+            </div>
+          </div>
+          
+          <div className="footer-status">
+            {session?.user && (
+              <div className="user-status">
+                <span>Signed in as {session.user.displayName}</span>
+                <span className="connection-status">🟢 Connected</span>
+              </div>
+            )}
+            
+            <div className="app-version">
+              <span>Casting Destiny v2.0.0</span>
+            </div>
+          </div>
         </div>
       </footer>
 
-      {/* Development/Debug Info */}
+      {/* Click outside handlers */}
+      {showUserMenu && (
+        <div 
+          className="dropdown-overlay"
+          onClick={() => setShowUserMenu(false)}
+        />
+      )}
+
+      {/* Development Debug Info */}
       {process.env.NODE_ENV === 'development' && (
         <div className="debug-info">
           <details>
@@ -184,7 +270,8 @@ export default function Layout({ children }) {
                   type: session.user.membershipType
                 } : null,
                 showFriends,
-                showMobileMenu
+                showMobileMenu,
+                currentPath: router.pathname
               }, null, 2)}
             </pre>
           </details>

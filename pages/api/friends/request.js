@@ -1,4 +1,3 @@
-// pages/api/friends/request.js
 import { jwtVerify } from 'jose'
 import fs from 'fs'
 import path from 'path'
@@ -12,10 +11,16 @@ const FRIENDS_DIR = process.env.VERCEL ?
 
 async function getSessionFromRequest(req) {
   try {
-    const token = req.cookies['session-token']
-    if (!token) return null
+    const sessionCookie = req.cookies['bungie-session']
+    if (!sessionCookie) return null
 
-    const { payload } = await jwtVerify(token, secret)
+    const { payload } = await jwtVerify(sessionCookie, secret)
+    
+    // Check if token is expired
+    if (payload.expiresAt && Date.now() > payload.expiresAt) {
+      return null
+    }
+
     return payload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -69,7 +74,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Authentication required' })
     }
 
-    const { targetUserId } = req.body
+    const { targetUserId, targetDisplayName } = req.body
     const userId = session.user.membershipId
 
     if (!targetUserId) {
@@ -80,33 +85,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Cannot send friend request to yourself' })
     }
 
-    console.log(`Sending friend request from ${userId} to ${targetUserId}`)
+    console.log(`Processing friend request: ${userId} -> ${targetUserId}`)
 
     // Load current user's friends data
     const senderFriends = loadUserFriends(userId)
     
     // Check if already friends
-    const isAlreadyFriend = senderFriends.friends?.some(f => f.membershipId === targetUserId)
+    const isAlreadyFriend = senderFriends.friends.some(f => f.membershipId === targetUserId)
     if (isAlreadyFriend) {
       return res.status(400).json({ error: 'Already friends with this user' })
     }
 
     // Check if request already sent
-    const requestAlreadySent = senderFriends.sentRequests?.some(r => r.targetUserId === targetUserId)
+    const requestAlreadySent = senderFriends.sentRequests.some(r => r.targetUserId === targetUserId)
     if (requestAlreadySent) {
       return res.status(400).json({ error: 'Friend request already sent' })
-    }
-
-    // Check if there's already a pending request from the target user
-    const existingRequest = senderFriends.pendingRequests?.some(r => r.requesterId === targetUserId)
-    if (existingRequest) {
-      return res.status(400).json({ error: 'This user has already sent you a friend request' })
     }
 
     // Create request data
     const requestData = {
       id: `${userId}-${targetUserId}-${Date.now()}`,
       targetUserId,
+      targetDisplayName: targetDisplayName || 'Unknown User',
       sentAt: new Date().toISOString()
     }
 

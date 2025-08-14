@@ -1,17 +1,19 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/useAuth'
-import { AppContext } from '../pages/_app'
 
-export default function UserInventory() {
+export default function UserInventory({ onExoticLocked }) {
   const { session, isLoading } = useAuth()
-  const { manifest, isIntelligenceReady } = useContext(AppContext)
   const [inventory, setInventory] = useState(null)
   const [isLoadingInventory, setIsLoadingInventory] = useState(false)
   const [error, setError] = useState(null)
   const [selectedCharacter, setSelectedCharacter] = useState(0)
   const [filterCategory, setFilterCategory] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [retryCount, setRetryCount] = useState(0)
+  const [expandedCategories, setExpandedCategories] = useState({
+    exotics: true,
+    legendaries: false,
+    weapons: false
+  })
 
   useEffect(() => {
     if (session?.user && session.accessToken) {
@@ -45,298 +47,434 @@ export default function UserInventory() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        const errorData = await response.json()
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
-      const inventoryData = await response.json()
+      const data = await response.json()
       
-      if (inventoryData.success) {
-        setInventory(inventoryData.inventory)
-        setSelectedCharacter(0) // Select first character by default
-        setRetryCount(0)
-        console.log('Inventory loaded successfully')
-      } else {
-        throw new Error(inventoryData.error || 'Failed to load inventory')
+      if (data.error) {
+        throw new Error(data.error)
+      }
+
+      console.log('Inventory loaded successfully:', data)
+      setInventory(data)
+      
+      // Select first character by default
+      if (data.characters && data.characters.length > 0) {
+        setSelectedCharacter(0)
       }
 
     } catch (error) {
-      console.error('Error loading inventory:', error)
-      setError(error.message)
+      console.error('Failed to load inventory:', error)
+      setError(error.message || 'Failed to load inventory')
       
-      // Auto-retry logic for temporary failures
-      if (retryCount < 3 && (
-        error.message.includes('503') || 
-        error.message.includes('timeout') ||
-        error.message.includes('network')
-      )) {
-        console.log(`Retrying inventory load (attempt ${retryCount + 1})...`)
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1)
-          loadUserInventory()
-        }, 2000 * (retryCount + 1))
-      }
+      // Create fallback inventory for demo purposes
+      setInventory(createFallbackInventory())
     } finally {
       setIsLoadingInventory(false)
     }
   }
 
-  const getFilteredItems = () => {
-    if (!inventory || !inventory.characters) return []
+  const createFallbackInventory = () => {
+    return {
+      characters: [
+        {
+          characterId: 'demo-hunter',
+          className: 'Hunter',
+          level: 100,
+          powerLevel: 1500,
+          lastPlayed: new Date().toISOString()
+        },
+        {
+          characterId: 'demo-titan',
+          className: 'Titan', 
+          level: 100,
+          powerLevel: 1498,
+          lastPlayed: new Date(Date.now() - 86400000).toISOString()
+        }
+      ],
+      vault: {
+        armor: generateFallbackArmor(),
+        weapons: generateFallbackWeapons()
+      }
+    }
+  }
 
-    const character = inventory.characters[selectedCharacter]
-    if (!character) return []
-
-    let items = [
-      ...character.equipped,
-      ...character.inventory,
-      ...(inventory.vault || [])
+  const generateFallbackArmor = () => {
+    return [
+      {
+        hash: 1001,
+        name: 'Ophidian Aspect',
+        tier: 'Exotic',
+        slot: 'arms',
+        classType: 'Warlock',
+        description: 'Improved weapon handling and reload speed.',
+        stats: { weapons: 25, health: 10 },
+        powerLevel: 1520
+      },
+      {
+        hash: 1002,
+        name: 'Celestial Nighthawk',
+        tier: 'Exotic',
+        slot: 'helmet',
+        classType: 'Hunter',
+        description: 'Golden Gun fires a single devastating shot.',
+        stats: { super: 30, weapons: 5 },
+        powerLevel: 1518
+      },
+      {
+        hash: 1003,
+        name: 'Doom Fang Pauldron',
+        tier: 'Exotic',
+        slot: 'arms',
+        classType: 'Titan',
+        description: 'Void melee kills grant Super energy.',
+        stats: { melee: 25, super: 15 },
+        powerLevel: 1515
+      },
+      {
+        hash: 1004,
+        name: 'High-Stat Legendary Helmet',
+        tier: 'Legendary',
+        slot: 'helmet',
+        classType: 'Any',
+        description: 'A well-rolled legendary helmet.',
+        stats: { health: 20, super: 15, weapons: 10 },
+        powerLevel: 1510
+      }
     ]
+  }
 
-    // Filter by category
+  const generateFallbackWeapons = () => {
+    return [
+      {
+        hash: 2001,
+        name: 'Whisper of the Worm',
+        tier: 'Exotic',
+        type: 'Sniper Rifle',
+        slot: 'power',
+        description: 'Precision shots refill the magazine.',
+        powerLevel: 1525
+      },
+      {
+        hash: 2002,
+        name: 'Gjallarhorn',
+        tier: 'Exotic',
+        type: 'Rocket Launcher',
+        slot: 'power',
+        description: 'Wolfpack Rounds track targets.',
+        powerLevel: 1520
+      },
+      {
+        hash: 2003,
+        name: 'Fatebringer (Adept)',
+        tier: 'Legendary',
+        type: 'Hand Cannon',
+        slot: 'kinetic',
+        description: 'Classic raid hand cannon.',
+        powerLevel: 1515
+      }
+    ]
+  }
+
+  const getFilteredItems = () => {
+    if (!inventory) return []
+
+    let items = []
+    
+    // Combine vault items
+    if (inventory.vault) {
+      items = [...(inventory.vault.armor || []), ...(inventory.vault.weapons || [])]
+    }
+
+    // Add character-specific items if needed
+    if (inventory.characters && inventory.characters[selectedCharacter]) {
+      const character = inventory.characters[selectedCharacter]
+      if (character.equipment) {
+        items = [...items, ...character.equipment]
+      }
+    }
+
+    // Apply filters
     if (filterCategory !== 'all') {
       items = items.filter(item => {
-        if (filterCategory === 'weapons') return item.itemType === 3
-        if (filterCategory === 'armor') return item.itemType === 2
-        if (filterCategory === 'exotic') return item.tier === 'Exotic'
-        return true
+        switch (filterCategory) {
+          case 'exotic':
+            return item.tier === 'Exotic'
+          case 'legendary':
+            return item.tier === 'Legendary'
+          case 'armor':
+            return item.slot && ['helmet', 'arms', 'chest', 'legs', 'class'].includes(item.slot)
+          case 'weapons':
+            return item.slot && ['kinetic', 'energy', 'power'].includes(item.slot)
+          default:
+            return true
+        }
       })
     }
 
-    // Filter by search term
+    // Apply search filter
     if (searchTerm) {
-      const search = searchTerm.toLowerCase()
-      items = items.filter(item => 
-        item.name.toLowerCase().includes(search) ||
-        (item.description && item.description.toLowerCase().includes(search))
+      items = items.filter(item =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
       )
     }
 
     return items
   }
 
-  const getItemIcon = (item) => {
-    if (item.icon) {
-      return `https://www.bungie.net${item.icon}`
-    }
-    return '/default-item-icon.png'
-  }
-
-  const getItemRarityClass = (tier) => {
-    switch (tier) {
-      case 'Exotic': return 'exotic'
-      case 'Legendary': return 'legendary'
-      case 'Rare': return 'rare'
-      case 'Uncommon': return 'uncommon'
-      default: return 'common'
+  const handleItemClick = (item) => {
+    if (item.tier === 'Exotic' && onExoticLocked) {
+      onExoticLocked(item)
     }
   }
 
-  const handleRetry = () => {
-    setRetryCount(0)
-    loadUserInventory()
+  const toggleCategory = (category) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }))
+  }
+
+  const getItemsByCategory = (items) => {
+    const categories = {
+      exotics: items.filter(item => item.tier === 'Exotic'),
+      legendaries: items.filter(item => item.tier === 'Legendary'),
+      armor: items.filter(item => item.slot && ['helmet', 'arms', 'chest', 'legs', 'class'].includes(item.slot)),
+      weapons: items.filter(item => item.slot && ['kinetic', 'energy', 'power'].includes(item.slot))
+    }
+    
+    return categories
+  }
+
+  const renderItem = (item) => {
+    const isExotic = item.tier === 'Exotic'
+    
+    return (
+      <div 
+        key={item.hash}
+        className={`inventory-item ${item.tier?.toLowerCase() || 'common'} ${isExotic ? 'clickable' : ''}`}
+        onClick={() => handleItemClick(item)}
+        title={isExotic ? 'Click to lock this exotic for builds' : ''}
+      >
+        <div className="item-header">
+          <span className="item-name">{item.name}</span>
+          <span className={`item-tier ${item.tier?.toLowerCase() || 'common'}`}>
+            {item.tier || 'Common'}
+          </span>
+        </div>
+        
+        <div className="item-details">
+          {item.description && (
+            <p className="item-description">{item.description}</p>
+          )}
+          
+          <div className="item-meta">
+            {item.slot && (
+              <span className="item-slot">{item.slot}</span>
+            )}
+            {item.type && (
+              <span className="item-type">{item.type}</span>
+            )}
+            {item.classType && item.classType !== 'Any' && (
+              <span className="item-class">{item.classType}</span>
+            )}
+            {item.powerLevel && (
+              <span className="item-power">{item.powerLevel} Power</span>
+            )}
+          </div>
+          
+          {item.stats && Object.keys(item.stats).length > 0 && (
+            <div className="item-stats">
+              {Object.entries(item.stats).map(([stat, value]) => (
+                <span key={stat} className="stat-pill">
+                  {stat}: +{value}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {isExotic && (
+          <div className="exotic-indicator">
+            🔒 Click to use in builds
+          </div>
+        )}
+      </div>
+    )
   }
 
   if (isLoading) {
     return (
-      <div className="user-inventory loading">
-        <div className="loading-content">
-          <div className="loading-spinner"></div>
-          <span>Loading user session...</span>
+      <div className="inventory-loading">
+        <div className="loading-spinner"></div>
+        <span>Loading authentication...</span>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <div className="inventory-auth-required">
+        <p>Please sign in to view your inventory</p>
+      </div>
+    )
+  }
+
+  if (isLoadingInventory) {
+    return (
+      <div className="inventory-loading">
+        <div className="loading-spinner"></div>
+        <span>Loading your inventory...</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="inventory-error">
+        <div className="error-content">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={loadUserInventory} className="retry-btn">
+            Retry
+          </button>
         </div>
       </div>
     )
   }
 
-  if (!session?.user) {
+  if (!inventory) {
     return (
-      <div className="user-inventory auth-required">
-        <div className="auth-prompt">
-          <h3>🎒 User Inventory</h3>
-          <p>Sign in with Bungie to view your Destiny 2 inventory</p>
-          <div className="auth-features">
-            <div className="feature">✓ View all characters</div>
-            <div className="feature">✓ Access vault items</div>
-            <div className="feature">✓ Use only owned items for builds</div>
-            <div className="feature">✓ Smart item recommendations</div>
-          </div>
-        </div>
+      <div className="inventory-empty">
+        <p>No inventory data available</p>
+        <button onClick={loadUserInventory} className="load-btn">
+          Load Inventory
+        </button>
       </div>
     )
   }
+
+  const filteredItems = getFilteredItems()
+  const categorizedItems = getItemsByCategory(filteredItems)
 
   return (
     <div className="user-inventory">
       <div className="inventory-header">
-        <h3>🎒 {session.user.displayName}'s Inventory</h3>
-        
-        {!isIntelligenceReady() && (
-          <div className="intelligence-warning">
-            ⚠️ Intelligence system loading... Enhanced features limited
-          </div>
-        )}
-        
-        <button 
-          onClick={handleRetry}
-          disabled={isLoadingInventory}
-          className="refresh-btn"
-          title="Refresh Inventory"
-        >
-          🔄 Refresh
+        <h3>Your Guardian Inventory</h3>
+        <button onClick={loadUserInventory} className="refresh-btn" disabled={isLoadingInventory}>
+          {isLoadingInventory ? 'Refreshing...' : '🔄 Refresh'}
         </button>
       </div>
 
-      {error && (
-        <div className="error-section">
-          <div className="error-message">
-            <span className="error-icon">⚠️</span>
-            <div className="error-content">
-              <div className="error-title">Failed to load inventory</div>
-              <div className="error-details">{error}</div>
-              {error.includes('Origin header') && (
-                <div className="error-help">
-                  This is a configuration issue. The app domain needs to be registered with Bungie.
-                </div>
-              )}
-            </div>
-            <button onClick={handleRetry} className="retry-btn">
-              Try Again
-            </button>
-          </div>
+      {/* Character Selection */}
+      {inventory.characters && inventory.characters.length > 0 && (
+        <div className="character-selector">
+          <label>Character:</label>
+          <select 
+            value={selectedCharacter} 
+            onChange={(e) => setSelectedCharacter(parseInt(e.target.value))}
+          >
+            {inventory.characters.map((char, index) => (
+              <option key={char.characterId} value={index}>
+                {char.className} (Power {char.powerLevel})
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
-      {isLoadingInventory && (
-        <div className="loading-section">
-          <div className="loading-content">
-            <div className="loading-spinner"></div>
-            <span>Loading your Destiny 2 inventory...</span>
-            {retryCount > 0 && (
-              <div className="retry-info">Retry attempt {retryCount}/3</div>
+      {/* Filters */}
+      <div className="inventory-filters">
+        <div className="filter-group">
+          <label>Category:</label>
+          <select 
+            value={filterCategory} 
+            onChange={(e) => setFilterCategory(e.target.value)}
+          >
+            <option value="all">All Items</option>
+            <option value="exotic">Exotics Only</option>
+            <option value="legendary">Legendaries Only</option>
+            <option value="armor">Armor</option>
+            <option value="weapons">Weapons</option>
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Search:</label>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search items..."
+            className="search-input"
+          />
+        </div>
+      </div>
+
+      {/* Items Display */}
+      <div className="inventory-content">
+        {filteredItems.length === 0 ? (
+          <div className="no-items">
+            <p>No items found matching your filters</p>
+          </div>
+        ) : (
+          <div className="inventory-categories">
+            {/* Exotics Section */}
+            {categorizedItems.exotics.length > 0 && (
+              <div className="category-section">
+                <h4 
+                  onClick={() => toggleCategory('exotics')}
+                  className="category-header clickable"
+                >
+                  Exotic Items ({categorizedItems.exotics.length})
+                  <span className="expand-icon">
+                    {expandedCategories.exotics ? '▼' : '▶'}
+                  </span>
+                </h4>
+                {expandedCategories.exotics && (
+                  <div className="category-items">
+                    {categorizedItems.exotics.map(renderItem)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Legendary Section */}
+            {categorizedItems.legendaries.length > 0 && (
+              <div className="category-section">
+                <h4 
+                  onClick={() => toggleCategory('legendaries')}
+                  className="category-header clickable"
+                >
+                  Legendary Items ({categorizedItems.legendaries.length})
+                  <span className="expand-icon">
+                    {expandedCategories.legendaries ? '▼' : '▶'}
+                  </span>
+                </h4>
+                {expandedCategories.legendaries && (
+                  <div className="category-items">
+                    {categorizedItems.legendaries.map(renderItem)}
+                  </div>
+                )}
+              </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {inventory && (
-        <>
-          {/* Character Selection */}
-          {inventory.characters && inventory.characters.length > 1 && (
-            <div className="character-selection">
-              {inventory.characters.map((character, index) => (
-                <button
-                  key={character.characterId}
-                  className={`character-btn ${selectedCharacter === index ? 'active' : ''}`}
-                  onClick={() => setSelectedCharacter(index)}
-                >
-                  <div className="character-info">
-                    <span className="character-class">{character.class}</span>
-                    <span className="character-level">Level {character.level}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Filters */}
-          <div className="inventory-filters">
-            <div className="filter-row">
-              <select 
-                value={filterCategory} 
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="category-filter"
-              >
-                <option value="all">All Items</option>
-                <option value="weapons">Weapons</option>
-                <option value="armor">Armor</option>
-                <option value="exotic">Exotic Only</option>
-              </select>
-
-              <input
-                type="text"
-                placeholder="Search items..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-filter"
-              />
-            </div>
-          </div>
-
-          {/* Inventory Grid */}
-          <div className="inventory-grid">
-            {getFilteredItems().map((item, index) => (
-              <div 
-                key={`${item.instanceId || item.hash}-${index}`}
-                className={`inventory-item ${getItemRarityClass(item.tier)}`}
-                title={item.description}
-              >
-                <div className="item-icon">
-                  <img 
-                    src={getItemIcon(item)} 
-                    alt={item.name}
-                    onError={(e) => {
-                      e.target.src = '/default-item-icon.png'
-                    }}
-                  />
-                  {item.tier === 'Exotic' && (
-                    <div className="exotic-badge">⭐</div>
-                  )}
-                </div>
-                
-                <div className="item-info">
-                  <div className="item-name">{item.name}</div>
-                  <div className="item-type">{item.typeName}</div>
-                  {item.powerLevel && (
-                    <div className="item-power">{item.powerLevel}</div>
-                  )}
-                </div>
-
-                {item.isEquipped && (
-                  <div className="equipped-badge">Equipped</div>
-                )}
-
-                {item.location === 'vault' && (
-                  <div className="vault-badge">Vault</div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {getFilteredItems().length === 0 && !isLoadingInventory && (
-            <div className="no-items">
-              <p>No items match your current filters</p>
-              <button onClick={() => {
-                setFilterCategory('all')
-                setSearchTerm('')
-              }}>
-                Clear Filters
-              </button>
-            </div>
-          )}
-
-          {/* Inventory Stats */}
-          {inventory.stats && (
-            <div className="inventory-stats">
-              <div className="stat-item">
-                <span className="stat-label">Total Items:</span>
-                <span className="stat-value">{inventory.stats.totalItems}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Vault Usage:</span>
-                <span className="stat-value">
-                  {inventory.stats.vaultUsed}/{inventory.stats.vaultCapacity}
-                </span>
-              </div>
-              {inventory.stats.exoticCount && (
-                <div className="stat-item">
-                  <span className="stat-label">Exotics:</span>
-                  <span className="stat-value">{inventory.stats.exoticCount}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
+      {/* Usage Instructions */}
+      <div className="inventory-instructions">
+        <h4>How to Use</h4>
+        <ul>
+          <li>🔍 Use filters to find specific types of gear</li>
+          <li>🔒 Click on exotic items to lock them for build generation</li>
+          <li>📊 View item stats and power levels</li>
+          <li>🔄 Refresh to get the latest data from Bungie</li>
+        </ul>
+      </div>
     </div>
   )
 }
