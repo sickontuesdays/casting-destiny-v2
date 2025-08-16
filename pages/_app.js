@@ -1,37 +1,24 @@
-import React, { useState, useEffect, createContext, useContext } from 'react'
+import React, { useState, useEffect, createContext } from 'react'
 import Layout from '../components/Layout'
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
 
 // Create AppContext for global state management
-const AppContext = createContext({
+export const AppContext = createContext({
   manifest: null,
-  buildIntelligence: null,
-  buildScorer: null,
-  manifestManager: null,
   intelligenceStatus: {
     isLoading: false,
     isInitialized: false,
     error: null,
     features: [],
     version: null
-  },
-  refreshIntelligence: async () => false,
-  isIntelligenceReady: () => false,
-  getIntelligenceFeatures: () => [],
-  getSystemVersion: () => null
+  }
 })
-
-export { AppContext }
-export const useAppContext = () => useContext(AppContext)
 
 function MyApp({ Component, pageProps }) {
   const [manifest, setManifest] = useState(null)
-  const [buildIntelligence, setBuildIntelligence] = useState(null)
-  const [buildScorer, setBuildScorer] = useState(null)
-  const [manifestManager, setManifestManager] = useState(null)
   const [intelligenceStatus, setIntelligenceStatus] = useState({
-    isLoading: false,
+    isLoading: true,
     isInitialized: false,
     error: null,
     features: [],
@@ -39,145 +26,90 @@ function MyApp({ Component, pageProps }) {
   })
 
   useEffect(() => {
-    initializeIntelligenceSystem()
+    loadBasicSystem()
   }, [])
 
-  const initializeIntelligenceSystem = async () => {
-    setIntelligenceStatus(prev => ({
-      ...prev,
-      isLoading: true,
-      error: null
-    }))
-
+  const loadBasicSystem = async () => {
+    console.log('🚀 Loading basic system...')
+    
     try {
-      console.log('🧠 Initializing Intelligence System...')
-
-      // Import intelligence components dynamically
-      const [
-        { default: ManifestManager },
-        { EnhancedBuildScorer },
-        { BuildIntelligence }
-      ] = await Promise.all([
-        import('../lib/manifest-manager'),
-        import('../lib/enhanced-build-scorer'),
-        import('../lib/destiny-intelligence/build-intelligence')
-      ])
-
-      // Initialize manifest manager
+      // Just load the manifest manager
+      const ManifestManager = (await import('../lib/manifest-manager')).default
       const manifestMgr = new ManifestManager()
-      const manifestData = await manifestMgr.loadManifest()
       
-      console.log('📄 Manifest loaded successfully')
+      // Load manifest with fallback
+      let manifestData
+      try {
+        manifestData = await manifestMgr.loadManifest()
+      } catch (error) {
+        console.warn('Using fallback manifest:', error.message)
+        manifestData = manifestMgr.createFallbackManifest()
+      }
+      
       setManifest(manifestData)
-      setManifestManager(manifestMgr)
-
-      // Initialize build intelligence
-      const intelligence = new BuildIntelligence()
-      await intelligence.initialize(manifestData)
-      setBuildIntelligence(intelligence)
-
-      // Initialize enhanced build scorer
-      const scorer = new EnhancedBuildScorer()
-      await scorer.initialize(manifestData)
-      setBuildScorer(scorer)
-
+      
+      // Set as initialized with basic features
       setIntelligenceStatus({
         isLoading: false,
         isInitialized: true,
         error: null,
         features: [
-          'Natural Language Processing',
-          'Synergy Analysis',
-          'Build Optimization',
-          'Exotic Recommendations',
-          'Stat Calculations',
-          'Activity-Specific Builds'
+          'Inventory Management',
+          'Build Storage',
+          'Friend System'
         ],
         version: manifestData?.version || '2.0.0'
       })
-
-      console.log('✅ Intelligence System initialized successfully!')
-
+      
+      console.log('✅ Basic system loaded!')
+      
     } catch (error) {
-      console.error('❌ Intelligence System initialization failed:', error)
+      console.error('❌ System load failed:', error)
+      
+      // Allow app to continue without manifest
       setIntelligenceStatus({
         isLoading: false,
-        isInitialized: false,
-        error: error.message,
-        features: [],
-        version: null
+        isInitialized: true,
+        error: 'Running without manifest',
+        features: ['Basic Features'],
+        version: 'fallback'
       })
     }
   }
 
-  const refreshIntelligence = async (force = false) => {
-    if (intelligenceStatus.isLoading) return false
+  // Don't show loading screen for too long
+  if (intelligenceStatus.isLoading) {
+    // Use a simple timeout to prevent infinite loading
+    setTimeout(() => {
+      if (intelligenceStatus.isLoading) {
+        setIntelligenceStatus(prev => ({
+          ...prev,
+          isLoading: false,
+          isInitialized: true,
+          error: 'Load timeout'
+        }))
+      }
+    }, 5000)
     
-    if (force || !intelligenceStatus.isInitialized) {
-      await initializeIntelligenceSystem()
-      return true
-    }
-    return false
-  }
-
-  const isIntelligenceReady = () => {
-    return intelligenceStatus.isInitialized && !intelligenceStatus.error
-  }
-
-  const getIntelligenceFeatures = () => {
-    return intelligenceStatus.features
-  }
-
-  const getSystemVersion = () => {
-    return intelligenceStatus.version
+    return (
+      <div className="loading-screen">
+        <div className="loading-container">
+          <h1>Casting Destiny v2</h1>
+          <div className="loading-spinner"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   const contextValue = {
     manifest,
-    buildIntelligence,
-    buildScorer,
-    manifestManager,
-    intelligenceStatus,
-    refreshIntelligence,
-    isIntelligenceReady,
-    getIntelligenceFeatures,
-    getSystemVersion
+    intelligenceStatus
   }
 
   return (
     <AppContext.Provider value={contextValue}>
       <Layout>
-        {/* Intelligence Status Indicators */}
-        {intelligenceStatus.isLoading && (
-          <div className="intelligence-loading-banner">
-            <div className="loading-content">
-              <div className="loading-spinner"></div>
-              <span>🧠 Initializing Intelligence System...</span>
-            </div>
-          </div>
-        )}
-
-        {intelligenceStatus.error && (
-          <div className="intelligence-error-banner">
-            <div className="error-content">
-              <span>⚠️ Intelligence System Error: {intelligenceStatus.error}</span>
-              <button 
-                onClick={() => refreshIntelligence(true)}
-                className="retry-btn"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
-        {intelligenceStatus.isInitialized && !intelligenceStatus.error && (
-          <div className="intelligence-ready-indicator">
-            <span className="ready-dot"></span>
-            <span>AI Enhanced</span>
-          </div>
-        )}
-
         <Component {...pageProps} />
       </Layout>
     </AppContext.Provider>

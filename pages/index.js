@@ -1,52 +1,46 @@
-import { useState, useContext, useEffect } from 'react'
-import { useRouter } from 'next/router'
+import { useState, useEffect, useContext } from 'react'
 import { useAuth } from '../lib/useAuth'
 import { AppContext } from './_app'
-import BuildCreator from '../components/BuildCreator'
 import NaturalLanguageInput from '../components/NaturalLanguageInput'
 import BuildDisplay from '../components/BuildDisplay'
 import UserInventory from '../components/UserInventory'
+import FriendSystem from '../components/FriendSystem'
 
 export default function Home() {
   const { session, isLoading: authLoading } = useAuth()
-  const { intelligenceStatus, isIntelligenceReady } = useContext(AppContext)
-  const [currentBuild, setCurrentBuild] = useState(null)
+  const { intelligenceStatus, manifest } = useContext(AppContext)
   const [buildRequest, setBuildRequest] = useState('')
-  const [useInventoryOnly, setUseInventoryOnly] = useState(false)
+  const [currentBuild, setCurrentBuild] = useState(null)
+  const [showInventory, setShowInventory] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
   const [authError, setAuthError] = useState('')
-  const [showInventory, setShowInventory] = useState(false)
-  const router = useRouter()
 
-  // Check for authentication errors in URL
+  // Check for auth errors in URL
   useEffect(() => {
-    if (router.query.error) {
-      setAuthError(router.query.error)
-      // Clear error from URL
-      router.replace('/', undefined, { shallow: true })
+    const urlParams = new URLSearchParams(window.location.search)
+    const error = urlParams.get('error')
+    const authSuccess = urlParams.get('auth')
+    
+    if (error) {
+      setAuthError(decodeURIComponent(error))
+      // Clean URL
+      window.history.replaceState({}, document.title, '/')
     }
-  }, [router.query.error])
+    
+    if (authSuccess === 'success') {
+      console.log('Authentication successful!')
+      // Clean URL
+      window.history.replaceState({}, document.title, '/')
+    }
+  }, [])
 
-  // Show loading screen while systems initialize
-  if (authLoading || intelligenceStatus.isLoading) {
+  // Show loading screen if auth is loading
+  if (authLoading) {
     return (
       <div className="loading-screen">
-        <div className="destiny-loader">
-          <div className="loader-spinner"></div>
-        </div>
-        <div className="loading-text">
-          <h2>Casting Destiny v2</h2>
-          <p>
-            {authLoading 
-              ? 'Connecting to Bungie...' 
-              : 'Initializing AI Intelligence System...'
-            }
-          </p>
-          {intelligenceStatus.features.length > 0 && (
-            <div className="loading-features">
-              <small>Loading: {intelligenceStatus.features.join(', ')}</small>
-            </div>
-          )}
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Checking authentication...</p>
         </div>
       </div>
     )
@@ -124,124 +118,75 @@ export default function Home() {
     setShowInventory(false)
   }
 
+  const isIntelligenceReady = () => {
+    return intelligenceStatus?.isInitialized && !intelligenceStatus?.isLoading
+  }
+
   return (
     <div className="home-container">
       <div className="main-content">
         {/* Intelligence System Status */}
-        {!isIntelligenceReady() && (
+        {intelligenceStatus?.error && (
           <div className="system-warning">
             <span className="warning-icon">⚠️</span>
-            <span>AI features are currently unavailable. Basic functionality is still available.</span>
+            <span>Running in basic mode. Some AI features may be unavailable.</span>
           </div>
         )}
 
         {!currentBuild ? (
-          <div className="build-creation-view">
-            {/* Main Build Creation Interface */}
-            <div className="creation-panel">
-              <div className="panel-header">
-                <h2>Create Your Perfect Build</h2>
-                <p>Describe what you want or use the advanced creator</p>
-              </div>
-
-              {/* Natural Language Input */}
-              <div className="input-section">
+          <>
+            {/* Build Creator Section */}
+            <div className="build-creator">
+              <h2>Create Your Build</h2>
+              
+              {isIntelligenceReady() ? (
                 <NaturalLanguageInput
-                  onBuildGenerated={handleBuildGenerated}
-                  buildRequest={buildRequest}
-                  setBuildRequest={setBuildRequest}
-                  useInventoryOnly={useInventoryOnly}
+                  value={buildRequest}
+                  onChange={setBuildRequest}
+                  onSubmit={handleBuildGenerated}
                   lockedExotic={lockedExotic}
-                  disabled={!isIntelligenceReady()}
+                  disabled={!manifest}
                 />
-              </div>
-
-              {/* Quick Options */}
-              <div className="quick-options">
-                <div className="option-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={useInventoryOnly}
-                      onChange={(e) => setUseInventoryOnly(e.target.checked)}
-                    />
-                    <span>Use only items in my inventory</span>
-                  </label>
-                </div>
-
-                <button 
-                  className="inventory-btn"
-                  onClick={handleInventoryToggle}
-                >
-                  {showInventory ? 'Hide Inventory' : 'View My Inventory'}
-                </button>
-              </div>
-
-              {/* Locked Exotic Display */}
-              {lockedExotic && (
-                <div className="locked-exotic">
-                  <span>🔒 Build will include: {lockedExotic.name}</span>
-                  <button onClick={() => setLockedExotic(null)}>Remove</button>
+              ) : (
+                <div className="basic-build-creator">
+                  <p>AI features are loading. You can still browse your inventory.</p>
                 </div>
               )}
-
-              {/* Advanced Creator Fallback */}
-              <div className="advanced-creator-section">
-                <details>
-                  <summary>Advanced Build Creator</summary>
-                  <BuildCreator
-                    onBuildGenerated={handleBuildGenerated}
-                    useInventoryOnly={useInventoryOnly}
-                    lockedExotic={lockedExotic}
-                  />
-                </details>
+              
+              <div className="quick-actions">
+                <button 
+                  onClick={handleInventoryToggle}
+                  className="inventory-btn"
+                >
+                  {showInventory ? 'Hide' : 'Show'} Inventory
+                </button>
               </div>
             </div>
 
-            {/* Inventory Panel */}
+            {/* Inventory Display */}
             {showInventory && (
-              <div className="inventory-panel">
-                <UserInventory onExoticLocked={handleExoticLocked} />
+              <div className="inventory-section">
+                <UserInventory 
+                  onExoticLocked={handleExoticLocked}
+                />
               </div>
             )}
-          </div>
+          </>
         ) : (
-          /* Build Display View */
-          <div className="build-display-view">
+          <>
+            {/* Build Display */}
             <BuildDisplay 
-              build={currentBuild} 
-              onNewSearch={handleNewSearch}
+              build={currentBuild}
+              onNewBuild={handleNewSearch}
             />
-          </div>
+          </>
         )}
       </div>
 
-      {/* Quick Actions Sidebar */}
-      <aside className="quick-actions">
-        <div className="action-buttons">
-          <button 
-            className="action-btn"
-            onClick={() => router.push('/builds')}
-            title="My Saved Builds"
-          >
-            📋
-          </button>
-          <button 
-            className="action-btn"
-            onClick={handleInventoryToggle}
-            title="Toggle Inventory"
-          >
-            🎒
-          </button>
-          <button 
-            className="action-btn"
-            onClick={() => router.push('/admin')}
-            title="Admin Panel"
-          >
-            ⚙️
-          </button>
-        </div>
-      </aside>
+      {/* Friends Sidebar */}
+      <div className="friends-sidebar">
+        <FriendSystem />
+      </div>
     </div>
   )
 }
