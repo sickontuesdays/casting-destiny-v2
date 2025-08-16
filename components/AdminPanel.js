@@ -1,429 +1,421 @@
 import { useState, useEffect, useContext } from 'react'
 import { AppContext } from '../pages/_app'
+import { useAuth } from '../lib/useAuth'
 
 export default function AdminPanel() {
-  const { intelligenceStatus, manifest, refreshIntelligence } = useContext(AppContext)
-  const [systemStats, setSystemStats] = useState(null)
-  const [updateLog, setUpdateLog] = useState([])
-  const [isLoadingStats, setIsLoadingStats] = useState(false)
-  const [adminPassword, setAdminPassword] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [authError, setAuthError] = useState('')
+  const { session } = useAuth()
+  const { manifest, refreshManifest } = useContext(AppContext)
+  
+  const [manifestStatus, setManifestStatus] = useState(null)
+  const [isPulling, setIsPulling] = useState(false)
+  const [pullResult, setPullResult] = useState(null)
+  const [pullError, setPullError] = useState(null)
+  const [systemStats, setSystemStats] = useState({
+    manifestVersion: 'unknown',
+    lastUpdated: 'never',
+    itemCount: 0,
+    cacheStatus: 'unknown'
+  })
 
+  // Check manifest status on load
   useEffect(() => {
-    if (isAuthenticated) {
-      loadSystemStats()
-      loadUpdateLog()
-    }
-  }, [isAuthenticated])
+    checkManifestStatus()
+  }, [])
 
-  const handleAdminLogin = async (e) => {
-    e.preventDefault()
-    setAuthError('')
+  const checkManifestStatus = async () => {
+    try {
+      const response = await fetch('/api/github/manifest/status')
+      
+      if (response.ok) {
+        const status = await response.json()
+        setManifestStatus(status)
+        
+        setSystemStats({
+          manifestVersion: status.version || 'not cached',
+          lastUpdated: status.lastUpdated ? new Date(status.lastUpdated).toLocaleString() : 'never',
+          itemCount: status.itemCount || 0,
+          cacheStatus: status.exists ? (status.isStale ? 'stale' : 'current') : 'empty'
+        })
+      } else if (response.status === 404) {
+        setManifestStatus({ exists: false })
+        setSystemStats(prev => ({ ...prev, cacheStatus: 'empty' }))
+      }
+    } catch (error) {
+      console.error('Failed to check manifest status:', error)
+    }
+  }
+
+  const handleManifestPull = async () => {
+    if (!session) {
+      setPullError('You must be logged in to pull the manifest')
+      return
+    }
+
+    setIsPulling(true)
+    setPullResult(null)
+    setPullError(null)
 
     try {
-      const response = await fetch('/api/admin/auth', {
+      console.log('🔄 Starting manifest pull from Bungie...')
+      
+      const response = await fetch('/api/admin/manifest-pull', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ password: adminPassword })
+        }
       })
 
+      const result = await response.json()
+
       if (response.ok) {
-        setIsAuthenticated(true)
-        setAdminPassword('')
+        setPullResult(result)
+        console.log('✅ Manifest pull successful:', result)
+        
+        // Refresh the manifest in the app context
+        await refreshManifest()
+        
+        // Update status
+        await checkManifestStatus()
       } else {
-        setAuthError('Invalid admin password')
+        setPullError(result.error || 'Failed to pull manifest')
+        console.error('❌ Manifest pull failed:', result)
       }
     } catch (error) {
-      setAuthError('Authentication failed')
-    }
-  }
-
-  const loadSystemStats = async () => {
-    setIsLoadingStats(true)
-    try {
-      // Mock system stats - in production this would come from a real API
-      const stats = {
-        totalUsers: 1247,
-        activeBuilds: 3892,
-        systemUptime: '5 days, 14 hours',
-        apiRequests: 45892,
-        manifestVersion: manifest?.version || 'Unknown',
-        intelligenceStatus: intelligenceStatus.isInitialized ? 'Online' : 'Offline',
-        lastUpdate: new Date().toISOString(),
-        performance: {
-          avgBuildGenerationTime: '2.3s',
-          successRate: '94.7%',
-          errorRate: '5.3%'
-        },
-        popularExotics: [
-          { name: 'Ophidian Aspect', usage: 23.5 },
-          { name: 'Celestial Nighthawk', usage: 18.2 },
-          { name: 'Doom Fang Pauldron', usage: 15.8 }
-        ]
-      }
-      
-      setSystemStats(stats)
-    } catch (error) {
-      console.error('Failed to load system stats:', error)
+      console.error('❌ Error pulling manifest:', error)
+      setPullError(error.message || 'Network error while pulling manifest')
     } finally {
-      setIsLoadingStats(false)
-    }
-  }
-
-  const loadUpdateLog = () => {
-    // Mock update log - in production this would come from a database
-    const log = [
-      {
-        timestamp: new Date().toISOString(),
-        type: 'info',
-        message: 'Intelligence system initialized successfully',
-        details: { features: intelligenceStatus.features }
-      },
-      {
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        type: 'success',
-        message: 'Manifest data loaded',
-        details: { version: manifest?.version }
-      },
-      {
-        timestamp: new Date(Date.now() - 7200000).toISOString(),
-        type: 'warning',
-        message: 'High API request volume detected',
-        details: { requestCount: 1250 }
-      },
-      {
-        timestamp: new Date(Date.now() - 10800000).toISOString(),
-        type: 'info',
-        message: 'User authentication system online'
-      }
-    ]
-    
-    setUpdateLog(log)
-  }
-
-  const handleForceRefresh = async () => {
-    try {
-      await refreshIntelligence(true)
-      await loadSystemStats()
-      
-      // Add log entry
-      const newEntry = {
-        timestamp: new Date().toISOString(),
-        type: 'info',
-        message: 'Manual system refresh triggered',
-        details: { admin: true }
-      }
-      
-      setUpdateLog(prev => [newEntry, ...prev].slice(0, 10))
-    } catch (error) {
-      console.error('Force refresh failed:', error)
+      setIsPulling(false)
     }
   }
 
   const handleClearCache = async () => {
-    try {
-      // In production, this would clear various caches
-      console.log('Cache cleared')
-      
-      const newEntry = {
-        timestamp: new Date().toISOString(),
-        type: 'success',
-        message: 'System cache cleared',
-        details: { admin: true }
-      }
-      
-      setUpdateLog(prev => [newEntry, ...prev].slice(0, 10))
-    } catch (error) {
-      console.error('Cache clear failed:', error)
+    if (confirm('Are you sure you want to clear the manifest cache? The app will need to re-download it.')) {
+      // This would call an API to clear GitHub cache
+      alert('Cache clearing not yet implemented')
     }
-  }
-
-  const exportSystemData = () => {
-    const data = {
-      systemStats,
-      updateLog,
-      intelligenceStatus,
-      manifest: {
-        version: manifest?.version,
-        loadedAt: manifest?.loadedAt,
-        tables: manifest?.tables
-      },
-      exportedAt: new Date().toISOString()
-    }
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `casting-destiny-admin-${Date.now()}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="admin-login">
-        <div className="login-container">
-          <h2>Admin Access Required</h2>
-          <form onSubmit={handleAdminLogin}>
-            <div className="form-group">
-              <label>Admin Password:</label>
-              <input
-                type="password"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                placeholder="Enter admin password"
-                required
-              />
-            </div>
-            
-            {authError && (
-              <div className="error-message">
-                {authError}
-              </div>
-            )}
-            
-            <button type="submit" className="login-btn">
-              Access Admin Panel
-            </button>
-          </form>
-        </div>
-      </div>
-    )
   }
 
   return (
     <div className="admin-panel">
       <div className="admin-header">
         <h2>System Administration</h2>
-        <div className="admin-actions">
-          <button onClick={handleForceRefresh} className="action-btn">
-            🔄 Force Refresh
+        <p>Manage manifest data and system settings</p>
+      </div>
+
+      {/* User Info */}
+      <div className="admin-section">
+        <h3>Current User</h3>
+        <div className="info-grid">
+          <div className="info-item">
+            <span className="label">Username:</span>
+            <span className="value">{session?.user?.displayName || 'Not logged in'}</span>
+          </div>
+          <div className="info-item">
+            <span className="label">Platform:</span>
+            <span className="value">{session?.user?.platforms?.[0] || 'Unknown'}</span>
+          </div>
+          <div className="info-item">
+            <span className="label">Membership ID:</span>
+            <span className="value">{session?.user?.membershipId || 'N/A'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Manifest Management */}
+      <div className="admin-section">
+        <h3>Manifest Management</h3>
+        
+        <div className="manifest-status">
+          <div className="status-grid">
+            <div className="status-item">
+              <span className="label">Cache Status:</span>
+              <span className={`value status-${systemStats.cacheStatus}`}>
+                {systemStats.cacheStatus}
+              </span>
+            </div>
+            <div className="status-item">
+              <span className="label">Version:</span>
+              <span className="value">{systemStats.manifestVersion}</span>
+            </div>
+            <div className="status-item">
+              <span className="label">Last Updated:</span>
+              <span className="value">{systemStats.lastUpdated}</span>
+            </div>
+            <div className="status-item">
+              <span className="label">Item Count:</span>
+              <span className="value">{systemStats.itemCount.toLocaleString()}</span>
+            </div>
+          </div>
+
+          {manifestStatus?.isStale && (
+            <div className="warning-message">
+              ⚠️ The cached manifest is older than 7 days and should be updated.
+            </div>
+          )}
+
+          {!manifestStatus?.exists && (
+            <div className="error-message">
+              ❌ No manifest is currently cached. Please pull the manifest from Bungie.
+            </div>
+          )}
+        </div>
+
+        <div className="manifest-actions">
+          <button 
+            className="btn-primary"
+            onClick={handleManifestPull}
+            disabled={isPulling}
+          >
+            {isPulling ? (
+              <>
+                <span className="spinner"></span>
+                Pulling Manifest...
+              </>
+            ) : (
+              '🔄 Pull Manifest from Bungie'
+            )}
           </button>
-          <button onClick={handleClearCache} className="action-btn">
+
+          <button 
+            className="btn-secondary"
+            onClick={checkManifestStatus}
+            disabled={isPulling}
+          >
+            🔍 Check Status
+          </button>
+
+          <button 
+            className="btn-danger"
+            onClick={handleClearCache}
+            disabled={isPulling || !manifestStatus?.exists}
+          >
             🗑️ Clear Cache
           </button>
-          <button onClick={exportSystemData} className="action-btn">
-            📥 Export Data
-          </button>
-          <button 
-            onClick={() => setIsAuthenticated(false)}
-            className="action-btn logout"
-          >
-            🚪 Logout
-          </button>
         </div>
-      </div>
 
-      {/* System Status Overview */}
-      <div className="admin-section">
-        <h3>System Status</h3>
-        <div className="status-grid">
-          <div className={`status-card ${intelligenceStatus.isInitialized ? 'online' : 'offline'}`}>
-            <div className="status-indicator">
-              <span className={`status-dot ${intelligenceStatus.isInitialized ? 'green' : 'red'}`}></span>
-              <span>AI Intelligence</span>
-            </div>
-            <div className="status-value">
-              {intelligenceStatus.isInitialized ? 'Online' : 'Offline'}
-            </div>
+        {/* Pull Result */}
+        {pullResult && (
+          <div className="success-message">
+            <h4>✅ Manifest Pull Successful!</h4>
+            <ul>
+              <li>Version: {pullResult.version}</li>
+              <li>Items: {pullResult.itemCount?.toLocaleString()}</li>
+              <li>Tables: {pullResult.tables?.length}</li>
+              {pullResult.warning && (
+                <li className="warning">⚠️ {pullResult.warning}</li>
+              )}
+            </ul>
           </div>
+        )}
 
-          <div className="status-card online">
-            <div className="status-indicator">
-              <span className="status-dot green"></span>
-              <span>Bungie API</span>
-            </div>
-            <div className="status-value">Connected</div>
+        {/* Pull Error */}
+        {pullError && (
+          <div className="error-message">
+            <h4>❌ Pull Failed</h4>
+            <p>{pullError}</p>
           </div>
-
-          <div className={`status-card ${manifest?.version ? 'online' : 'offline'}`}>
-            <div className="status-indicator">
-              <span className={`status-dot ${manifest?.version ? 'green' : 'yellow'}`}></span>
-              <span>Manifest</span>
-            </div>
-            <div className="status-value">
-              {manifest?.version || 'Loading'}
-            </div>
-          </div>
-
-          <div className="status-card online">
-            <div className="status-indicator">
-              <span className="status-dot green"></span>
-              <span>Database</span>
-            </div>
-            <div className="status-value">Online</div>
-          </div>
-        </div>
-      </div>
-
-      {/* System Statistics */}
-      <div className="admin-section">
-        <h3>System Statistics</h3>
-        {isLoadingStats ? (
-          <div className="loading-stats">Loading statistics...</div>
-        ) : systemStats ? (
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Users</div>
-              <div className="stat-value">{systemStats.totalUsers?.toLocaleString()}</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">Active Builds</div>
-              <div className="stat-value">{systemStats.activeBuilds?.toLocaleString()}</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">API Requests (24h)</div>
-              <div className="stat-value">{systemStats.apiRequests?.toLocaleString()}</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">Success Rate</div>
-              <div className="stat-value">{systemStats.performance?.successRate}</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">Avg Build Time</div>
-              <div className="stat-value">{systemStats.performance?.avgBuildGenerationTime}</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">System Uptime</div>
-              <div className="stat-value">{systemStats.systemUptime}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="no-stats">Failed to load statistics</div>
         )}
       </div>
 
-      {/* Intelligence System Details */}
+      {/* Scheduled Updates */}
       <div className="admin-section">
-        <h3>AI Intelligence System</h3>
-        <div className="intelligence-details">
-          <div className="detail-row">
-            <span className="detail-label">Status:</span>
-            <span className={`detail-value ${intelligenceStatus.isInitialized ? 'success' : 'error'}`}>
-              {intelligenceStatus.isInitialized ? 'Initialized' : 'Not Ready'}
-            </span>
+        <h3>Automated Updates</h3>
+        <div className="info-box">
+          <p>
+            The manifest is scheduled to automatically update every Tuesday at 1:30 PM EST
+            after the weekly Destiny 2 reset.
+          </p>
+          <p className="note">
+            Note: Automated updates require a GitHub Action or external cron job to be configured.
+          </p>
+        </div>
+      </div>
+
+      {/* System Health */}
+      <div className="admin-section">
+        <h3>System Health</h3>
+        <div className="health-grid">
+          <div className="health-item">
+            <span className="indicator green"></span>
+            <span>Authentication Service</span>
           </div>
-          
-          <div className="detail-row">
-            <span className="detail-label">Version:</span>
-            <span className="detail-value">{intelligenceStatus.version || 'Unknown'}</span>
+          <div className="health-item">
+            <span className={`indicator ${manifest ? 'green' : 'yellow'}`}></span>
+            <span>Manifest Service</span>
           </div>
-          
-          {intelligenceStatus.error && (
-            <div className="detail-row">
-              <span className="detail-label">Error:</span>
-              <span className="detail-value error">{intelligenceStatus.error}</span>
-            </div>
-          )}
-          
-          <div className="detail-row">
-            <span className="detail-label">Features:</span>
-            <div className="feature-list">
-              {intelligenceStatus.features.map((feature, index) => (
-                <span key={index} className="feature-tag">
-                  {feature}
-                </span>
-              ))}
-            </div>
+          <div className="health-item">
+            <span className={`indicator ${manifestStatus?.exists ? 'green' : 'red'}`}></span>
+            <span>GitHub Cache</span>
+          </div>
+          <div className="health-item">
+            <span className="indicator green"></span>
+            <span>Bungie API</span>
           </div>
         </div>
       </div>
 
-      {/* Popular Items */}
-      {systemStats?.popularExotics && (
-        <div className="admin-section">
-          <h3>Popular Exotic Items</h3>
-          <div className="popular-items">
-            {systemStats.popularExotics.map((item, index) => (
-              <div key={index} className="popular-item">
-                <span className="item-name">{item.name}</span>
-                <span className="item-usage">{item.usage}% usage</span>
-                <div className="usage-bar">
-                  <div 
-                    className="usage-fill" 
-                    style={{ width: `${item.usage}%` }}
-                  ></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <style jsx>{`
+        .admin-panel {
+          padding: 20px;
+        }
 
-      {/* System Update Log */}
-      <div className="admin-section">
-        <h3>System Update Log</h3>
-        <div className="update-log">
-          {updateLog.length === 0 ? (
-            <p className="no-logs">No recent updates</p>
-          ) : (
-            <div className="log-entries">
-              {updateLog.map((entry, index) => (
-                <div key={index} className={`log-entry ${entry.type}`}>
-                  <div className="log-header">
-                    <span className="log-timestamp">
-                      {new Date(entry.timestamp).toLocaleString()}
-                    </span>
-                    <span className={`log-type ${entry.type}`}>
-                      {entry.type.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="log-message">{entry.message}</div>
-                  {entry.details && (
-                    <details className="log-details">
-                      <summary>Details</summary>
-                      <pre>{JSON.stringify(entry.details, null, 2)}</pre>
-                    </details>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+        .admin-header {
+          margin-bottom: 30px;
+        }
 
-      {/* Manifest Information */}
-      <div className="admin-section">
-        <h3>Manifest Information</h3>
-        <div className="manifest-info">
-          <div className="info-row">
-            <span className="info-label">Version:</span>
-            <span className="info-value">{manifest?.version || 'Not loaded'}</span>
-          </div>
-          
-          <div className="info-row">
-            <span className="info-label">Loaded At:</span>
-            <span className="info-value">
-              {manifest?.loadedAt ? new Date(manifest.loadedAt).toLocaleString() : 'N/A'}
-            </span>
-          </div>
-          
-          <div className="info-row">
-            <span className="info-label">Tables:</span>
-            <span className="info-value">
-              {manifest?.tables ? manifest.tables.length : 0} loaded
-            </span>
-          </div>
-          
-          {manifest?.isFallback && (
-            <div className="info-row">
-              <span className="info-label">Mode:</span>
-              <span className="info-value warning">Fallback Mode</span>
-            </div>
-          )}
-        </div>
-      </div>
+        .admin-header h2 {
+          margin: 0 0 10px 0;
+        }
+
+        .admin-section {
+          background: var(--card-bg, #1a1a2e);
+          border-radius: 8px;
+          padding: 20px;
+          margin-bottom: 20px;
+        }
+
+        .admin-section h3 {
+          margin: 0 0 20px 0;
+          color: var(--primary, #4a9eff);
+        }
+
+        .info-grid, .status-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+
+        .info-item, .status-item {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .label {
+          font-size: 12px;
+          color: var(--text-secondary, #888);
+          margin-bottom: 5px;
+        }
+
+        .value {
+          font-size: 16px;
+          font-weight: 500;
+        }
+
+        .status-current { color: #4ade80; }
+        .status-stale { color: #fbbf24; }
+        .status-empty { color: #f87171; }
+
+        .manifest-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 20px;
+        }
+
+        .btn-primary, .btn-secondary, .btn-danger {
+          padding: 10px 20px;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: all 0.3s;
+        }
+
+        .btn-primary {
+          background: var(--primary, #4a9eff);
+          color: white;
+        }
+
+        .btn-secondary {
+          background: var(--secondary, #6b7280);
+          color: white;
+        }
+
+        .btn-danger {
+          background: #ef4444;
+          color: white;
+        }
+
+        .btn-primary:disabled, .btn-secondary:disabled, .btn-danger:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .success-message, .error-message, .warning-message {
+          padding: 15px;
+          border-radius: 5px;
+          margin-top: 20px;
+        }
+
+        .success-message {
+          background: rgba(74, 222, 128, 0.1);
+          border: 1px solid #4ade80;
+          color: #4ade80;
+        }
+
+        .error-message {
+          background: rgba(248, 113, 113, 0.1);
+          border: 1px solid #f87171;
+          color: #f87171;
+        }
+
+        .warning-message {
+          background: rgba(251, 191, 36, 0.1);
+          border: 1px solid #fbbf24;
+          color: #fbbf24;
+        }
+
+        .health-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 15px;
+        }
+
+        .health-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .indicator {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+        }
+
+        .indicator.green { background: #4ade80; }
+        .indicator.yellow { background: #fbbf24; }
+        .indicator.red { background: #f87171; }
+
+        .spinner {
+          display: inline-block;
+          width: 14px;
+          height: 14px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+          margin-right: 8px;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .info-box {
+          background: rgba(74, 158, 255, 0.1);
+          padding: 15px;
+          border-radius: 5px;
+          border: 1px solid rgba(74, 158, 255, 0.3);
+        }
+
+        .note {
+          font-size: 12px;
+          color: var(--text-secondary, #888);
+          margin-top: 10px;
+        }
+      `}</style>
     </div>
   )
 }

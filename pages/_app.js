@@ -1,4 +1,5 @@
 import React, { useState, useEffect, createContext } from 'react'
+import { AuthProvider } from '../lib/useAuth'
 import Layout from '../components/Layout'
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
@@ -6,113 +7,77 @@ import '../styles/destiny-theme.css'
 // Create AppContext for global state management
 export const AppContext = createContext({
   manifest: null,
-  intelligenceStatus: {
-    isLoading: false,
-    isInitialized: false,
-    error: null,
-    features: [],
-    version: null
-  }
+  manifestLoading: false,
+  manifestError: null,
+  setManifest: () => {},
+  refreshManifest: () => {}
 })
 
 function MyApp({ Component, pageProps }) {
   const [manifest, setManifest] = useState(null)
-  const [intelligenceStatus, setIntelligenceStatus] = useState({
-    isLoading: true,
-    isInitialized: false,
-    error: null,
-    features: [],
-    version: null
-  })
+  const [manifestLoading, setManifestLoading] = useState(false)
+  const [manifestError, setManifestError] = useState(null)
 
-  useEffect(() => {
-    loadBasicSystem()
-  }, [])
-
-  const loadBasicSystem = async () => {
-    console.log('🚀 Loading basic system...')
-    
+  // Refresh manifest from GitHub cache (not Bungie directly)
+  const refreshManifest = async () => {
     try {
-      // Just load the manifest manager
-      const ManifestManager = (await import('../lib/manifest-manager')).default
-      const manifestMgr = new ManifestManager()
+      setManifestLoading(true)
+      setManifestError(null)
       
-      // Load manifest with fallback
-      let manifestData
-      try {
-        manifestData = await manifestMgr.loadManifest()
-      } catch (error) {
-        console.warn('Using fallback manifest:', error.message)
-        manifestData = manifestMgr.createFallbackManifest()
+      // Load from GitHub cache endpoint
+      const response = await fetch('/api/github/manifest')
+      
+      if (response.ok) {
+        const data = await response.json()
+        setManifest(data)
+        console.log('✅ Manifest loaded from GitHub cache')
+      } else {
+        // Don't block app if manifest isn't available
+        console.warn('Manifest not available in GitHub cache')
+        setManifestError('Manifest not cached yet')
       }
-      
-      setManifest(manifestData)
-      
-      // Set as initialized with basic features
-      setIntelligenceStatus({
-        isLoading: false,
-        isInitialized: true,
-        error: null,
-        features: [
-          'Inventory Management',
-          'Build Storage',
-          'Friend System'
-        ],
-        version: manifestData?.version || '2.0.0'
-      })
-      
-      console.log('✅ Basic system loaded!')
-      
     } catch (error) {
-      console.error('❌ System load failed:', error)
-      
-      // Allow app to continue without manifest
-      setIntelligenceStatus({
-        isLoading: false,
-        isInitialized: true,
-        error: 'Running without manifest',
-        features: ['Basic Features'],
-        version: 'fallback'
-      })
+      console.warn('Failed to load manifest:', error)
+      setManifestError(error.message)
+    } finally {
+      setManifestLoading(false)
     }
   }
 
-  // Don't show loading screen for too long
-  if (intelligenceStatus.isLoading) {
-    // Use a simple timeout to prevent infinite loading
-    setTimeout(() => {
-      if (intelligenceStatus.isLoading) {
-        setIntelligenceStatus(prev => ({
-          ...prev,
-          isLoading: false,
-          isInitialized: true,
-          error: 'Load timeout'
-        }))
+  // Only load manifest after user logs in (handled by components)
+  useEffect(() => {
+    // Check if manifest exists in GitHub on app load but don't block
+    const checkManifestAvailability = async () => {
+      try {
+        const response = await fetch('/api/github/manifest/status')
+        if (response.ok) {
+          const status = await response.json()
+          console.log('Manifest status:', status)
+        }
+      } catch (error) {
+        console.log('Manifest not available yet')
       }
-    }, 5000)
+    }
     
-    return (
-      <div className="loading-screen">
-        <div className="loading-container">
-          <h1>Casting Destiny v2</h1>
-          <div className="loading-spinner"></div>
-          <p>Loading...</p>
-        </div>
-      </div>
-    )
-  }
+    checkManifestAvailability()
+  }, [])
 
   const contextValue = {
     manifest,
-    intelligenceStatus
+    manifestLoading,
+    manifestError,
+    setManifest,
+    refreshManifest
   }
 
   return (
-    <AppContext.Provider value={contextValue}>
-      <Layout>
-        <Component {...pageProps} />
-      </Layout>
-    </AppContext.Provider>
+    <AuthProvider>
+      <AppContext.Provider value={contextValue}>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      </AppContext.Provider>
+    </AuthProvider>
   )
 }
 

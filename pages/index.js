@@ -4,37 +4,52 @@ import { AppContext } from './_app'
 import NaturalLanguageInput from '../components/NaturalLanguageInput'
 import BuildDisplay from '../components/BuildDisplay'
 import UserInventory from '../components/UserInventory'
-import FriendSystem from '../components/FriendSystem'
 
 export default function Home() {
-  const { session, isLoading: authLoading } = useAuth()
-  const { intelligenceStatus, manifest } = useContext(AppContext)
-  const [buildRequest, setBuildRequest] = useState('')
+  const { session, isLoading: authLoading, error: authError } = useAuth()
+  const { manifest, manifestLoading, refreshManifest } = useContext(AppContext)
+  
   const [currentBuild, setCurrentBuild] = useState(null)
+  const [buildRequest, setBuildRequest] = useState('')
   const [showInventory, setShowInventory] = useState(false)
   const [lockedExotic, setLockedExotic] = useState(null)
-  const [authError, setAuthError] = useState('')
+  const [inventoryLoaded, setInventoryLoaded] = useState(false)
+  const [loginError, setLoginError] = useState('')
 
-  // Check for auth errors in URL
+  // Handle authentication callback
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
-    const error = urlParams.get('error')
-    const authSuccess = urlParams.get('auth')
     
-    if (error) {
-      setAuthError(decodeURIComponent(error))
+    if (urlParams.get('auth') === 'success') {
+      console.log('Authentication successful!')
       // Clean URL
       window.history.replaceState({}, document.title, '/')
+      
+      // Load manifest from GitHub after successful login
+      if (!manifest && !manifestLoading) {
+        refreshManifest()
+      }
     }
     
-    if (authSuccess === 'success') {
-      console.log('Authentication successful!')
+    if (urlParams.get('error')) {
+      setLoginError(decodeURIComponent(urlParams.get('error')))
       // Clean URL
       window.history.replaceState({}, document.title, '/')
     }
   }, [])
 
-  // Show loading screen if auth is loading
+  // Load user data after authentication
+  useEffect(() => {
+    if (session && !inventoryLoaded && !manifestLoading) {
+      // Load manifest from GitHub if not already loaded
+      if (!manifest) {
+        refreshManifest()
+      }
+      setInventoryLoaded(true)
+    }
+  }, [session, inventoryLoaded, manifest, manifestLoading])
+
+  // Show loading only during auth check
   if (authLoading) {
     return (
       <div className="loading-screen">
@@ -67,11 +82,13 @@ export default function Home() {
             </ul>
           </div>
           
-          {authError && (
+          {(loginError || authError) && (
             <div className="error-message">
-              <strong>Login Error:</strong> {authError}
+              <strong>Login Error:</strong> {loginError || authError}
               <button 
-                onClick={() => setAuthError('')}
+                onClick={() => {
+                  setLoginError('')
+                }}
                 className="error-close"
               >
                 ×
@@ -98,6 +115,7 @@ export default function Home() {
     )
   }
 
+  // Main app interface for authenticated users
   const handleBuildGenerated = (build) => {
     setCurrentBuild(build)
     setShowInventory(false)
@@ -118,74 +136,131 @@ export default function Home() {
     setShowInventory(false)
   }
 
-  const isIntelligenceReady = () => {
-    return intelligenceStatus?.isInitialized && !intelligenceStatus?.isLoading
-  }
-
   return (
     <div className="home-container">
       <div className="main-content">
-        {/* Intelligence System Status */}
-        {intelligenceStatus?.error && (
-          <div className="system-warning">
+        {/* User info bar */}
+        <div className="user-bar">
+          <div className="user-info">
+            <img 
+              src={session.user.avatar || '/default-guardian.png'} 
+              alt={session.user.displayName}
+              className="user-avatar"
+            />
+            <span className="user-name">{session.user.displayName}</span>
+            <span className="user-platform">({session.user.platforms?.[0] || 'Unknown'})</span>
+          </div>
+          
+          <div className="action-buttons">
+            <button 
+              onClick={handleInventoryToggle}
+              className="inventory-btn"
+              disabled={manifestLoading}
+            >
+              {showInventory ? 'Hide' : 'Show'} Inventory
+            </button>
+            
+            <a href="/admin" className="admin-link">
+              Admin Panel
+            </a>
+            
+            <button 
+              onClick={() => window.location.href = '/api/auth/logout'}
+              className="logout-btn"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        {/* Manifest status */}
+        {!manifest && !manifestLoading && (
+          <div className="manifest-warning">
             <span className="warning-icon">⚠️</span>
-            <span>Running in basic mode. Some AI features may be unavailable.</span>
+            <span>Manifest not loaded. Visit the Admin Panel to download the manifest.</span>
+            <a href="/admin" className="warning-link">Go to Admin Panel</a>
           </div>
         )}
 
-        {!currentBuild ? (
-          <>
-            {/* Build Creator Section */}
+        {manifestLoading && (
+          <div className="manifest-loading">
+            <div className="loading-spinner small"></div>
+            <span>Loading Destiny 2 data...</span>
+          </div>
+        )}
+
+        {/* Build interface */}
+        <div className="build-interface">
+          {!currentBuild ? (
             <div className="build-creator">
-              <h2>Create Your Build</h2>
+              <h2>Create Your Perfect Build</h2>
               
-              {isIntelligenceReady() ? (
-                <NaturalLanguageInput
-                  value={buildRequest}
-                  onChange={setBuildRequest}
-                  onSubmit={handleBuildGenerated}
-                  lockedExotic={lockedExotic}
-                  disabled={!manifest}
-                />
-              ) : (
-                <div className="basic-build-creator">
-                  <p>AI features are loading. You can still browse your inventory.</p>
+              {lockedExotic && (
+                <div className="locked-exotic">
+                  <span>Building around: </span>
+                  <strong>{lockedExotic.name}</strong>
+                  <button onClick={() => setLockedExotic(null)}>×</button>
                 </div>
               )}
               
+              <NaturalLanguageInput
+                onBuildGenerated={handleBuildGenerated}
+                value={buildRequest}
+                onChange={setBuildRequest}
+                lockedExotic={lockedExotic}
+                disabled={!manifest}
+                placeholder={!manifest ? "Please load manifest from Admin Panel first..." : "Describe your ideal build..."}
+              />
+              
               <div className="quick-actions">
                 <button 
-                  onClick={handleInventoryToggle}
-                  className="inventory-btn"
+                  onClick={() => setBuildRequest("Create a DPS build for raid boss damage")}
+                  disabled={!manifest}
                 >
-                  {showInventory ? 'Hide' : 'Show'} Inventory
+                  Raid DPS
+                </button>
+                <button 
+                  onClick={() => setBuildRequest("Make me tanky for grandmaster nightfalls")}
+                  disabled={!manifest}
+                >
+                  GM Tank
+                </button>
+                <button 
+                  onClick={() => setBuildRequest("PvP build focused on movement and map control")}
+                  disabled={!manifest}
+                >
+                  PvP Control
+                </button>
+                <button 
+                  onClick={() => setBuildRequest("Ability spam build with fast cooldowns")}
+                  disabled={!manifest}
+                >
+                  Ability Spam
                 </button>
               </div>
             </div>
+          ) : (
+            <div className="build-results">
+              <BuildDisplay
+                build={currentBuild}
+                onNewSearch={handleNewSearch}
+                onSave={() => console.log('Save build')}
+                onShare={() => console.log('Share build')}
+              />
+            </div>
+          )}
+        </div>
 
-            {/* Inventory Display */}
-            {showInventory && (
-              <div className="inventory-section">
-                <UserInventory 
-                  onExoticLocked={handleExoticLocked}
-                />
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {/* Build Display */}
-            <BuildDisplay 
-              build={currentBuild}
-              onNewBuild={handleNewSearch}
+        {/* Inventory panel */}
+        {showInventory && session && (
+          <div className="inventory-panel">
+            <UserInventory
+              session={session}
+              onExoticLocked={handleExoticLocked}
+              onClose={() => setShowInventory(false)}
             />
-          </>
+          </div>
         )}
-      </div>
-
-      {/* Friends Sidebar */}
-      <div className="friends-sidebar">
-        <FriendSystem />
       </div>
     </div>
   )
