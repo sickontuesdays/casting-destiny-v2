@@ -1,480 +1,394 @@
-import fetch from 'node-fetch'
+import BungieAPIService from '../../../lib/bungie-api-service'
+import ManifestManager from '../../../lib/manifest-manager'
+import { jwtVerify } from 'jose'
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
+const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
 
+async function getSessionFromCookie(req) {
   try {
-    const { membershipType, membershipId, accessToken } = req.body
+    const sessionCookie = req.cookies['bungie-session']
+    if (!sessionCookie) return null
 
-    if (!membershipType || !membershipId || !accessToken) {
-      return res.status(400).json({ 
-        error: 'Missing required parameters: membershipType, membershipId, accessToken' 
-      })
-    }
-
-    console.log(`Loading inventory for ${membershipId} (type: ${membershipType})`)
-
-    // Get characters
-    const characters = await getCharacters(membershipType, membershipId, accessToken)
+    const { payload } = await jwtVerify(sessionCookie, secret)
     
-    if (!characters || characters.length === 0) {
-      throw new Error('No characters found')
+    // Check if token is expired
+    if (payload.expiresAt && Date.now() > payload.expiresAt) {
+      return null
     }
 
-    // Get vault items
-    const vaultItems = await getVaultItems(membershipType, membershipId, accessToken)
-
-    // Process and structure inventory data
-    const inventory = {
-      membershipId,
-      membershipType,
-      characters: characters.map(char => ({
-        characterId: char.characterId,
-        className: getClassName(char.classType),
-        race: getRaceName(char.raceType),
-        gender: getGenderName(char.genderType),
-        level: char.level,
-        powerLevel: char.light,
-        lastPlayed: char.dateLastPlayed,
-        equipment: char.equipment || []
-      })),
-      vault: {
-        armor: vaultItems.armor || [],
-        weapons: vaultItems.weapons || []
-      },
-      loadedAt: new Date().toISOString()
-    }
-
-    console.log(`Successfully loaded inventory: ${characters.length} characters, ${vaultItems.totalItems || 0} vault items`)
-
-    res.status(200).json(inventory)
-
+    return payload
   } catch (error) {
-    console.error('Error loading inventory:', error)
-    
-    // Return structured error
-    res.status(500).json({ 
-      error: 'Failed to load inventory',
-      details: error.message,
-      fallback: createFallbackInventory(req.body.membershipId)
-    })
-  }
-}
-
-async function getCharacters(membershipType, membershipId, accessToken) {
-  try {
-    const profileUrl = `https://www.bungie.net/Platform/Destiny2/${membershipType}/Profile/${membershipId}/?components=100,200,205`
-    
-    const response = await fetch(profileUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'X-API-Key': process.env.BUNGIE_API_KEY
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    
-    if (data.ErrorCode !== 1) {
-      throw new Error(`Bungie API Error: ${data.Message}`)
-    }
-
-    const characters = []
-    const profile = data.Response
-    
-    if (profile.characters && profile.characters.data) {
-      for (const [characterId, characterData] of Object.entries(profile.characters.data)) {
-        // Get character equipment
-        const equipment = await getCharacterEquipment(
-          membershipType, 
-          membershipId, 
-          characterId, 
-          accessToken
-        )
-        
-        characters.push({
-          characterId,
-          ...characterData,
-          equipment
-        })
-      }
-    }
-
-    return characters
-
-  } catch (error) {
-    console.error('Error fetching characters:', error)
-    return []
-  }
-}
-
-async function getCharacterEquipment(membershipType, membershipId, characterId, accessToken) {
-  try {
-    const equipmentUrl = `https://www.bungie.net/Platform/Destiny2/${membershipType}/Profile/${membershipId}/Character/${characterId}/?components=205`
-    
-    const response = await fetch(equipmentUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'X-API-Key': process.env.BUNGIE_API_KEY
-      }
-    })
-
-    if (!response.ok) {
-      return []
-    }
-
-    const data = await response.json()
-    
-    if (data.ErrorCode !== 1 || !data.Response.equipment) {
-      return []
-    }
-
-    const equipment = data.Response.equipment.data.items || []
-    
-    // Process equipment items
-    return equipment.map(item => processInventoryItem(item, true))
-      .filter(item => item !== null)
-
-  } catch (error) {
-    console.error('Error fetching character equipment:', error)
-    return []
-  }
-}
-
-async function getVaultItems(membershipType, membershipId, accessToken) {
-  try {
-    const vaultUrl = `https://www.bungie.net/Platform/Destiny2/${membershipType}/Profile/${membershipId}/?components=102`
-    
-    const response = await fetch(vaultUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'X-API-Key': process.env.BUNGIE_API_KEY
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    
-    if (data.ErrorCode !== 1) {
-      throw new Error(`Bungie API Error: ${data.Message}`)
-    }
-
-    const vaultItems = data.Response.profileInventory?.data?.items || []
-    
-    // Categorize vault items
-    const categorized = {
-      armor: [],
-      weapons: [],
-      totalItems: vaultItems.length
-    }
-
-    vaultItems.forEach(item => {
-      const processedItem = processInventoryItem(item, false)
-      if (processedItem) {
-        if (processedItem.itemType === 2) { // Armor
-          categorized.armor.push(processedItem)
-        } else if (processedItem.itemType === 3) { // Weapon
-          categorized.weapons.push(processedItem)
-        }
-      }
-    })
-
-    return categorized
-
-  } catch (error) {
-    console.error('Error fetching vault items:', error)
-    return { armor: [], weapons: [], totalItems: 0 }
-  }
-}
-
-function processInventoryItem(item, isEquipped) {
-  try {
-    // This would normally look up item definitions in the manifest
-    // For now, return basic item structure with mock data
-    
-    const itemHash = item.itemHash
-    const mockItem = generateMockItem(itemHash, isEquipped)
-    
-    return {
-      hash: itemHash,
-      instanceId: item.itemInstanceId,
-      quantity: item.quantity || 1,
-      isEquipped,
-      location: isEquipped ? 'equipped' : 'vault',
-      ...mockItem
-    }
-    
-  } catch (error) {
-    console.error('Error processing item:', error)
+    console.error('Session verification failed:', error)
     return null
   }
 }
 
-function generateMockItem(itemHash, isEquipped) {
-  // Generate mock item data based on hash
-  const hashStr = itemHash.toString()
-  const isExotic = hashStr.includes('999') || hashStr.includes('666')
-  const isWeapon = parseInt(hashStr.slice(-1)) % 2 === 0
-  
-  const baseItem = {
-    name: `${isExotic ? 'Exotic' : 'Legendary'} ${isWeapon ? 'Weapon' : 'Armor'}`,
-    tier: isExotic ? 'Exotic' : 'Legendary',
-    itemType: isWeapon ? 3 : 2,
-    powerLevel: 1500 + Math.floor(Math.random() * 50),
-    description: `A ${isExotic ? 'powerful exotic' : 'reliable legendary'} ${isWeapon ? 'weapon' : 'armor piece'}.`
+export default async function handler(req, res) {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
   }
-  
-  if (isWeapon) {
-    const weaponTypes = ['Hand Cannon', 'Pulse Rifle', 'Auto Rifle', 'Sniper Rifle', 'Shotgun', 'Rocket Launcher']
-    const slots = ['kinetic', 'energy', 'power']
-    
-    baseItem.type = weaponTypes[parseInt(hashStr.slice(-2)) % weaponTypes.length]
-    baseItem.slot = slots[parseInt(hashStr.slice(-1)) % slots.length]
-  } else {
-    const armorSlots = ['helmet', 'arms', 'chest', 'legs', 'class']
-    const classTypes = ['Titan', 'Hunter', 'Warlock']
-    
-    baseItem.slot = armorSlots[parseInt(hashStr.slice(-1)) % armorSlots.length]
-    baseItem.classType = classTypes[parseInt(hashStr.slice(-2)) % classTypes.length]
-    
-    // Generate random stats for armor
-    baseItem.stats = {
-      weapons: Math.floor(Math.random() * 30) + 5,
-      health: Math.floor(Math.random() * 30) + 5,
-      class: Math.floor(Math.random() * 25) + 5,
-      super: Math.floor(Math.random() * 25) + 5,
-      grenade: Math.floor(Math.random() * 25) + 5,
-      melee: Math.floor(Math.random() * 25) + 5
-    }
-  }
-  
-  // Add specific exotic items for demo
-  if (isExotic) {
-    const exoticItems = {
-      'armor': [
-        {
-          name: 'Ophidian Aspect',
-          description: 'Improved weapon handling and reload speed.',
-          slot: 'arms',
-          classType: 'Warlock',
-          stats: { weapons: 25, health: 10, class: 5 }
-        },
-        {
-          name: 'Celestial Nighthawk',
-          description: 'Golden Gun fires a single devastating shot.',
-          slot: 'helmet',
-          classType: 'Hunter',
-          stats: { super: 30, weapons: 5, grenade: 8 }
-        },
-        {
-          name: 'Doom Fang Pauldron',
-          description: 'Void melee kills grant Super energy.',
-          slot: 'arms',
-          classType: 'Titan',
-          stats: { melee: 25, super: 15, health: 8 }
-        }
-      ],
-      'weapons': [
-        {
-          name: 'Whisper of the Worm',
-          description: 'Precision shots refill the magazine.',
-          type: 'Sniper Rifle',
-          slot: 'power'
-        },
-        {
-          name: 'Gjallarhorn',
-          description: 'Wolfpack Rounds track targets.',
-          type: 'Rocket Launcher',
-          slot: 'power'
-        }
-      ]
-    }
-    
-    const category = isWeapon ? 'weapons' : 'armor'
-    const itemIndex = parseInt(hashStr.slice(-1)) % exoticItems[category].length
-    const selectedExotic = exoticItems[category][itemIndex]
-    
-    return { ...baseItem, ...selectedExotic }
-  }
-  
-  return baseItem
-}
 
-function createFallbackInventory(membershipId) {
-  return {
-    membershipId,
-    characters: [
-      {
-        characterId: 'fallback-1',
-        className: 'Hunter',
-        level: 100,
-        powerLevel: 1500,
-        lastPlayed: new Date().toISOString(),
-        equipment: []
+  try {
+    // Get session from cookie
+    const session = await getSessionFromCookie(req)
+    
+    if (!session?.user || !session.accessToken) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+
+    console.log(`Loading inventory for user: ${session.user.displayName}`)
+
+    // Initialize services
+    const bungieAPI = new BungieAPIService()
+    const manifestManager = new ManifestManager()
+    
+    // Load manifest for item definitions
+    const manifest = await manifestManager.loadManifest()
+    
+    // Get user's Destiny memberships
+    const { destinyMemberships, primaryMembership } = await bungieAPI.getDestinyMemberships(session.accessToken)
+    
+    if (!primaryMembership) {
+      return res.status(404).json({ error: 'No Destiny account found' })
+    }
+
+    // Get complete inventory
+    const inventoryData = await bungieAPI.getCompleteInventory(
+      primaryMembership.membershipType,
+      primaryMembership.membershipId,
+      session.accessToken
+    )
+
+    // Process inventory with manifest data
+    const processedInventory = await processInventoryWithManifest(inventoryData, manifest)
+    
+    // Get friends list (Bungie friends + clan members)
+    const [bungieFriends, clanMembers] = await Promise.all([
+      bungieAPI.getBungieFriends(session.accessToken),
+      bungieAPI.getClanMembers(
+        primaryMembership.membershipType,
+        primaryMembership.membershipId,
+        session.accessToken
+      )
+    ])
+
+    // Combine and deduplicate friends
+    const friendsMap = new Map()
+    
+    bungieFriends.forEach(friend => {
+      friendsMap.set(friend.membershipId, {
+        ...friend,
+        source: 'bungie',
+        canShareBuilds: true
+      })
+    })
+    
+    clanMembers.forEach(member => {
+      if (!friendsMap.has(member.membershipId)) {
+        friendsMap.set(member.membershipId, {
+          ...member,
+          source: 'clan',
+          canShareBuilds: true
+        })
       }
-    ],
-    vault: {
-      armor: [
-        {
-          hash: 1001,
-          name: 'Ophidian Aspect',
-          tier: 'Exotic',
-          slot: 'arms',
-          classType: 'Warlock',
-          description: 'Improved weapon handling and reload speed.',
-          stats: { weapons: 25, health: 10 },
-          powerLevel: 1520
-        }
-      ],
-      weapons: [
-        {
-          hash: 2001,
-          name: 'Whisper of the Worm',
-          tier: 'Exotic',
-          type: 'Sniper Rifle',
-          slot: 'power',
-          description: 'Precision shots refill the magazine.',
-          powerLevel: 1525
-        }
-      ]
-    },
-    isFallback: true,
-    loadedAt: new Date().toISOString()
-  }
-}
+    })
 
-// Helper functions
-function getClassName(classType) {
-  const classes = ['Titan', 'Hunter', 'Warlock']
-  return classes[classType] || 'Unknown'
-}
+    const response = {
+      success: true,
+      membership: {
+        membershipType: primaryMembership.membershipType,
+        membershipId: primaryMembership.membershipId,
+        displayName: primaryMembership.displayName,
+        crossSaveOverride: primaryMembership.crossSaveOverride,
+        applicableMembershipTypes: primaryMembership.applicableMembershipTypes
+      },
+      characters: processedInventory.characters,
+      vault: processedInventory.vault,
+      currencies: processedInventory.currencies,
+      itemComponents: processedInventory.itemComponents,
+      friends: Array.from(friendsMap.values()),
+      lastUpdated: new Date().toISOString()
+    }
 
-function getRaceName(raceType) {
-  const races = ['Human', 'Awoken', 'Exo']
-  return races[raceType] || 'Unknown'
-}
+    // Set cache headers for 5 minutes
+    res.setHeader('Cache-Control', 'private, max-age=300')
+    
+    res.status(200).json(response)
 
-function getGenderName(genderType) {
-  const genders = ['Male', 'Female']
-  return genders[genderType] || 'Unknown'
-}
-
-// Additional utility functions for item processing
-function getItemTypeName(itemType, itemSubType) {
-  const weaponTypes = {
-    6: 'Hand Cannon',
-    7: 'Auto Rifle', 
-    8: 'Pulse Rifle',
-    9: 'Scout Rifle',
-    10: 'Fusion Rifle',
-    11: 'Sniper Rifle',
-    12: 'Shotgun',
-    13: 'Machine Gun',
-    14: 'Rocket Launcher',
-    17: 'Sidearm',
-    18: 'Sword',
-    22: 'Linear Fusion Rifle',
-    23: 'Grenade Launcher',
-    24: 'Submachine Gun',
-    31: 'Bow'
-  }
-
-  const armorTypes = {
-    26: 'Helmet',
-    27: 'Gauntlets', 
-    28: 'Chest Armor',
-    29: 'Leg Armor',
-    30: 'Class Armor'
-  }
-
-  if (itemType === 3) { // Weapon
-    return weaponTypes[itemSubType] || 'Unknown Weapon'
-  } else if (itemType === 2) { // Armor
-    return armorTypes[itemSubType] || 'Unknown Armor'
-  }
-
-  return 'Unknown Item'
-}
-
-function getItemSlotName(bucketHash) {
-  const bucketMap = {
-    1498876634: 'kinetic',
-    2465295065: 'energy', 
-    953998645: 'power',
-    3448274439: 'helmet',
-    3551918588: 'gauntlets',
-    14239492: 'chest',
-    20886954: 'legs',
-    1585787867: 'classitem'
-  }
-
-  return bucketMap[bucketHash] || 'unknown'
-}
-
-function calculateItemPowerLevel(item, characterLevel = 100) {
-  // Mock power level calculation
-  // In a real implementation, this would use the actual Destiny 2 algorithms
-  const basePower = 1500
-  const variance = Math.floor(Math.random() * 50)
-  return basePower + variance
-}
-
-function processItemStats(item, manifestData) {
-  // Mock stat processing
-  // In a real implementation, this would look up stat definitions from the manifest
-  const mockStats = {}
-  
-  if (item.itemType === 2) { // Armor
-    const statNames = ['weapons', 'health', 'class', 'super', 'grenade', 'melee']
-    statNames.forEach(stat => {
-      mockStats[stat] = Math.floor(Math.random() * 25) + 5
+  } catch (error) {
+    console.error('Error loading inventory:', error)
+    
+    // Check for specific error types
+    if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+      return res.status(401).json({ 
+        error: 'Authentication expired. Please sign in again.',
+        code: 'AUTH_EXPIRED'
+      })
+    }
+    
+    if (error.message?.includes('503') || error.message?.includes('Maintenance')) {
+      return res.status(503).json({ 
+        error: 'Bungie.net is currently under maintenance.',
+        code: 'SERVICE_UNAVAILABLE'
+      })
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to load inventory',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      code: 'INVENTORY_LOAD_FAILED'
     })
   }
-
-  return mockStats
 }
 
-function determineItemQuality(item) {
-  // Determine item quality based on stats and other factors
-  if (item.tierType === 6) return 'exotic'
-  if (item.tierType === 5) return 'legendary'
-  if (item.tierType === 4) return 'rare'
-  if (item.tierType === 3) return 'uncommon'
-  return 'common'
-}
-
-// Error handling utility
-function handleBungieApiError(error, context) {
-  console.error(`Bungie API Error in ${context}:`, error)
-  
-  if (error.response) {
-    // HTTP error response
-    return {
-      error: `API request failed: ${error.response.status}`,
-      details: error.response.statusText,
-      retryable: error.response.status >= 500
-    }
-  } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-    // Network error
-    return {
-      error: 'Network connection failed',
-      details: 'Unable to reach Bungie servers',
-      retryable: true
-    }
-  } else {
-    // Other error
-    return {
-      error: 'Unexpected error occurred',
-      details: error.message,
-      retryable: false
-    }
+// Process inventory items with manifest definitions
+async function processInventoryWithManifest(inventoryData, manifest) {
+  const processed = {
+    characters: [],
+    vault: {
+      weapons: [],
+      armor: [],
+      consumables: [],
+      mods: [],
+      other: []
+    },
+    currencies: []
   }
+
+  // Process characters
+  for (const character of inventoryData.characters) {
+    const processedCharacter = {
+      ...character,
+      equipment: await processItems(character.equipment, manifest, inventoryData.itemComponents),
+      inventory: await processItems(character.inventory, manifest, inventoryData.itemComponents)
+    }
+    
+    // Calculate character stats
+    processedCharacter.stats = calculateCharacterStats(processedCharacter.equipment)
+    
+    processed.characters.push(processedCharacter)
+  }
+
+  // Process vault items
+  const vaultItems = await processItems(
+    inventoryData.vault.items,
+    manifest,
+    inventoryData.itemComponents
+  )
+  
+  // Categorize vault items
+  vaultItems.forEach(item => {
+    if (!item) return
+    
+    switch (item.itemType) {
+      case 2: // Armor
+        processed.vault.armor.push(item)
+        break
+      case 3: // Weapon
+        processed.vault.weapons.push(item)
+        break
+      case 9: // Consumables
+        processed.vault.consumables.push(item)
+        break
+      case 19: // Mods
+      case 20: // Armor Mods
+        processed.vault.mods.push(item)
+        break
+      default:
+        processed.vault.other.push(item)
+    }
+  })
+
+  // Process currencies
+  if (inventoryData.vault.currencies) {
+    processed.currencies = await processItems(
+      inventoryData.vault.currencies,
+      manifest,
+      inventoryData.itemComponents
+    )
+  }
+
+  // Include raw item components for advanced features
+  processed.itemComponents = inventoryData.itemComponents
+
+  return processed
+}
+
+// Process items with manifest data
+async function processItems(items, manifest, itemComponents) {
+  if (!items || !Array.isArray(items)) return []
+  
+  const processed = []
+  
+  for (const item of items) {
+    if (!item) continue
+    
+    const itemDef = manifest.getItem ? 
+      manifest.getItem(item.itemHash) : 
+      manifest.data?.DestinyInventoryItemDefinition?.[item.itemHash]
+    
+    if (!itemDef) {
+      // Include raw item if no definition found
+      processed.push({
+        ...item,
+        displayProperties: {
+          name: `Unknown Item (${item.itemHash})`,
+          description: 'Item definition not found'
+        }
+      })
+      continue
+    }
+    
+    // Build comprehensive item object
+    const processedItem = {
+      // Basic info
+      itemHash: item.itemHash,
+      itemInstanceId: item.itemInstanceId,
+      quantity: item.quantity || 1,
+      bindStatus: item.bindStatus,
+      location: item.location,
+      bucketHash: item.bucketHash,
+      transferStatus: item.transferStatus,
+      lockable: item.lockable,
+      state: item.state,
+      
+      // From manifest
+      displayProperties: itemDef.displayProperties,
+      itemType: itemDef.itemType,
+      itemSubType: itemDef.itemSubType,
+      classType: itemDef.classType,
+      tierType: itemDef.inventory?.tierType,
+      tierTypeName: itemDef.inventory?.tierTypeName,
+      isExotic: itemDef.inventory?.tierType === 6,
+      isLegendary: itemDef.inventory?.tierType === 5,
+      
+      // Item categories
+      itemCategoryHashes: itemDef.itemCategoryHashes,
+      
+      // Damage type for weapons
+      damageType: itemDef.defaultDamageType,
+      damageTypeHashes: itemDef.damageTypeHashes,
+      
+      // Stats from instance
+      stats: {},
+      sockets: [],
+      perks: [],
+      mods: []
+    }
+    
+    // Add instance-specific data if available
+    if (item.itemInstanceId && itemComponents) {
+      // Stats
+      if (itemComponents.stats?.[item.itemInstanceId]) {
+        const statData = itemComponents.stats[item.itemInstanceId]
+        processedItem.primaryStat = statData.primaryStat
+        
+        if (statData.stats) {
+          Object.entries(statData.stats).forEach(([statHash, statInfo]) => {
+            const statDef = manifest.getStat ? 
+              manifest.getStat(statHash) : 
+              manifest.data?.DestinyStatDefinition?.[statHash]
+            
+            processedItem.stats[statHash] = {
+              value: statInfo.value,
+              name: statDef?.displayProperties?.name || 'Unknown Stat',
+              description: statDef?.displayProperties?.description
+            }
+          })
+        }
+      }
+      
+      // Sockets (mods and perks)
+      if (itemComponents.sockets?.[item.itemInstanceId]) {
+        const socketData = itemComponents.sockets[item.itemInstanceId]
+        
+        socketData.sockets?.forEach((socket, index) => {
+          if (socket.plugHash) {
+            const plugDef = manifest.getItem ? 
+              manifest.getItem(socket.plugHash) : 
+              manifest.data?.DestinyInventoryItemDefinition?.[socket.plugHash]
+            
+            if (plugDef) {
+              const socketInfo = {
+                socketIndex: index,
+                plugHash: socket.plugHash,
+                name: plugDef.displayProperties?.name,
+                description: plugDef.displayProperties?.description,
+                icon: plugDef.displayProperties?.icon,
+                itemType: plugDef.itemType,
+                plugCategoryIdentifier: plugDef.plug?.plugCategoryIdentifier
+              }
+              
+              processedItem.sockets.push(socketInfo)
+              
+              // Categorize as perk or mod
+              if (plugDef.itemType === 19 || plugDef.itemType === 20) {
+                processedItem.mods.push(socketInfo)
+              } else if (plugDef.perks?.length > 0) {
+                processedItem.perks.push(socketInfo)
+              }
+            }
+          }
+        })
+      }
+      
+      // Energy capacity for armor
+      if (itemComponents.instances?.[item.itemInstanceId]) {
+        const instanceData = itemComponents.instances[item.itemInstanceId]
+        processedItem.energy = instanceData.energy
+        processedItem.powerLevel = instanceData.primaryStat?.value
+      }
+    }
+    
+    processed.push(processedItem)
+  }
+  
+  return processed
+}
+
+// Calculate total character stats from equipped items
+function calculateCharacterStats(equipment) {
+  const totalStats = {
+    mobility: 0,
+    resilience: 0,
+    recovery: 0,
+    discipline: 0,
+    intellect: 0,
+    strength: 0,
+    power: 0
+  }
+  
+  const statHashes = {
+    2996146975: 'mobility',
+    392767087: 'resilience',
+    1943323491: 'recovery',
+    1735777505: 'discipline',
+    144602215: 'intellect',
+    4244567218: 'strength'
+  }
+  
+  equipment.forEach(item => {
+    if (!item?.stats) return
+    
+    // Add armor stats
+    Object.entries(item.stats).forEach(([statHash, statInfo]) => {
+      const statName = statHashes[statHash]
+      if (statName) {
+        totalStats[statName] += statInfo.value || 0
+      }
+    })
+    
+    // Track power level
+    if (item.powerLevel && item.powerLevel > 0) {
+      totalStats.power += item.powerLevel
+    }
+  })
+  
+  // Calculate average power
+  const equippedCount = equipment.filter(i => i?.powerLevel > 0).length
+  if (equippedCount > 0) {
+    totalStats.power = Math.floor(totalStats.power / equippedCount)
+  }
+  
+  return totalStats
 }

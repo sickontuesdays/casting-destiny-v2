@@ -1,5 +1,5 @@
 import { SignJWT } from 'jose'
-import fetch from 'node-fetch'
+import BungieAPIService from '../../../lib/bungie-api-service'
 
 const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
 
@@ -40,29 +40,69 @@ export default async function handler(req, res) {
 
     console.log('Tokens received, fetching user profile...')
 
-    // Get user profile
-    const userProfile = await getBungieUserProfile(tokenResponse.access_token)
+    // Initialize Bungie API service
+    const bungieAPI = new BungieAPIService()
     
-    if (!userProfile) {
+    // Get user's Bungie profile and Destiny memberships
+    const { userInfo, destinyMemberships, primaryMembership } = 
+      await bungieAPI.getDestinyMemberships(tokenResponse.access_token)
+    
+    if (!userInfo?.bungieNetUser) {
       throw new Error('Failed to get user profile')
     }
 
-    console.log('User profile received:', userProfile.displayName)
+    const bungieUser = userInfo.bungieNetUser
+    console.log('User profile received:', bungieUser.uniqueName)
 
-    // Create session
+    // Create comprehensive session data
     const sessionData = {
       user: {
-        membershipId: userProfile.membershipId,
-        displayName: userProfile.displayName,
-        displayNameCode: userProfile.displayNameCode,
-        membershipType: userProfile.membershipType,
-        avatar: userProfile.profilePicturePath ? 
-          `https://www.bungie.net${userProfile.profilePicturePath}` : null
+        // Bungie.net user info
+        membershipId: bungieUser.membershipId,
+        displayName: bungieUser.uniqueName || bungieUser.displayName,
+        displayNameCode: bungieUser.displayNameCode,
+        profilePicturePath: bungieUser.profilePicturePath,
+        profileThemeName: bungieUser.profileThemeName,
+        userTitleDisplay: bungieUser.userTitleDisplay,
+        locale: bungieUser.locale,
+        
+        // Destiny-specific info
+        destinyMemberships: destinyMemberships.map(m => ({
+          membershipType: m.membershipType,
+          membershipId: m.membershipId,
+          displayName: m.displayName,
+          crossSaveOverride: m.crossSaveOverride,
+          applicableMembershipTypes: m.applicableMembershipTypes
+        })),
+        
+        // Primary membership for quick access
+        primaryMembershipType: primaryMembership?.membershipType,
+        primaryMembershipId: primaryMembership?.membershipId,
+        
+        // Platform info
+        platforms: destinyMemberships.map(m => getPlatformName(m.membershipType)),
+        
+        // Avatar URL
+        avatar: bungieUser.profilePicturePath ? 
+          `https://www.bungie.net${bungieUser.profilePicturePath}` : null
       },
+      
+      // OAuth tokens
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
+      tokenType: tokenResponse.token_type,
+      
+      // Token expiration
       expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
-      issuedAt: Date.now()
+      expiresIn: tokenResponse.expires_in,
+      
+      // Session metadata
+      issuedAt: Date.now(),
+      sessionId: generateSessionId(),
+      
+      // Permissions
+      membershipType: tokenResponse.membership_type,
+      scope: tokenResponse.scope || 'ReadUserData'
     }
 
     // Create JWT session token
@@ -78,10 +118,12 @@ export default async function handler(req, res) {
       `oauth-state=; HttpOnly; Secure=${process.env.NODE_ENV === 'production'}; SameSite=Lax; Path=/; Max-Age=0` // Clear state cookie
     ])
 
-    console.log('Session created successfully, redirecting to home')
+    console.log('Session created successfully for:', sessionData.user.displayName)
+    console.log('Destiny memberships found:', destinyMemberships.length)
+    console.log('Primary platform:', getPlatformName(primaryMembership?.membershipType))
     
-    // Redirect to home page
-    res.redirect('/')
+    // Redirect to home page with success indicator
+    res.redirect('/?auth=success')
 
   } catch (error) {
     console.error('Error in bungie-auth:', error)
@@ -119,50 +161,26 @@ async function exchangeCodeForTokens(code) {
   return await response.json()
 }
 
-async function getBungieUserProfile(accessToken) {
-  const profileUrl = 'https://www.bungie.net/Platform/User/GetMembershipsForCurrentUser/'
-  
-  const response = await fetch(profileUrl, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'X-API-Key': process.env.BUNGIE_API_KEY
-    }
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error('Profile fetch failed:', response.status, errorText)
-    throw new Error(`Profile fetch failed: ${response.status}`)
+function getPlatformName(membershipType) {
+  const platforms = {
+    0: 'None',
+    1: 'Xbox',
+    2: 'PlayStation',
+    3: 'Steam',
+    4: 'Blizzard',
+    5: 'Stadia',
+    6: 'EpicGames',
+    10: 'Demon',
+    254: 'BungieNext'
   }
+  return platforms[membershipType] || 'Unknown'
+}
 
-  const data = await response.json()
-  
-  if (data.ErrorCode !== 1) {
-    console.error('Bungie API error:', data.Message)
-    throw new Error(`Bungie API error: ${data.Message}`)
+function generateSessionId() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < 32; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
-
-  const primaryMembership = data.Response.primaryMembershipId
-  const destinyMemberships = data.Response.destinyMemberships || []
-  const bungieNetUser = data.Response.bungieNetUser
-
-  // Find the primary Destiny membership or use the first available
-  let membership = destinyMemberships.find(m => m.membershipId === primaryMembership)
-  if (!membership && destinyMemberships.length > 0) {
-    membership = destinyMemberships[0]
-  }
-
-  if (!membership) {
-    throw new Error('No Destiny memberships found')
-  }
-
-  return {
-    membershipId: membership.membershipId,
-    membershipType: membership.membershipType,
-    displayName: membership.displayName || bungieNetUser.displayName,
-    displayNameCode: membership.displayNameCode || bungieNetUser.displayNameCode,
-    profilePicturePath: bungieNetUser.profilePicturePath,
-    crossSaveOverride: membership.crossSaveOverride,
-    applicableMembershipTypes: membership.applicableMembershipTypes
-  }
+  return result
 }
