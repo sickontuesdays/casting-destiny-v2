@@ -1,3 +1,6 @@
+// pages/api/auth/session.js
+// API endpoint for checking user session status
+
 import { jwtVerify } from 'jose'
 
 const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
@@ -8,43 +11,44 @@ export default async function handler(req, res) {
   }
 
   try {
-    const sessionCookie = req.cookies['bungie-session']
+    // Get session token from cookie
+    const token = req.cookies['bungie-session']
     
-    if (!sessionCookie) {
-      return res.status(401).json({ error: 'No session found' })
+    if (!token) {
+      return res.status(401).json({ 
+        authenticated: false,
+        message: 'No session found'
+      })
     }
-
+    
     // Verify JWT token
-    const { payload } = await jwtVerify(sessionCookie, secret)
+    const { payload } = await jwtVerify(token, secret)
     
-    // Check if token is expired
-    if (payload.expiresAt && Date.now() > payload.expiresAt) {
-      // Clear expired session cookie
-      res.setHeader('Set-Cookie', [
-        `bungie-session=; HttpOnly; Secure=${process.env.NODE_ENV === 'production'}; SameSite=Lax; Path=/; Max-Age=0`
-      ])
-      
-      return res.status(401).json({ error: 'Session expired' })
+    // Check if session is expired
+    if (payload.exp && Date.now() >= payload.exp * 1000) {
+      return res.status(401).json({ 
+        authenticated: false,
+        message: 'Session expired'
+      })
     }
-
+    
     // Return session data
-    const sessionData = {
+    return res.status(200).json({
+      authenticated: true,
       user: payload.user,
-      accessToken: payload.accessToken,
-      expiresAt: payload.expiresAt,
-      issuedAt: payload.issuedAt
-    }
-
-    res.status(200).json(sessionData)
-
+      memberships: payload.memberships,
+      primaryMembership: payload.primaryMembership,
+      expiresAt: payload.exp ? new Date(payload.exp * 1000).toISOString() : null
+    })
+    
   } catch (error) {
-    console.error('Session verification failed:', error)
+    console.error('Session verification error:', error)
     
-    // Clear invalid session cookie
-    res.setHeader('Set-Cookie', [
-      `bungie-session=; HttpOnly; Secure=${process.env.NODE_ENV === 'production'}; SameSite=Lax; Path=/; Max-Age=0`
-    ])
-    
-    res.status(401).json({ error: 'Invalid session' })
+    // Invalid or expired token
+    return res.status(401).json({ 
+      authenticated: false,
+      message: 'Invalid session',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
   }
 }

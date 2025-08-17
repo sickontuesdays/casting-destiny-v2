@@ -80,31 +80,34 @@ async function updateManifest() {
     }
     
     // Download each table
-    for (const table of essentialTables) {
-      try {
-        console.log(`  Downloading ${table}...`)
-        const tableUrl = `https://www.bungie.net${manifestPaths}/${table}.json`
-        
-        const tableResponse = await fetch(tableUrl, {
-          headers: {
-            'User-Agent': 'CastingDestinyV2-Updater/1.0'
-          }
-        })
-        
-        if (tableResponse.ok) {
-          const tableData = await tableResponse.json()
-          manifestData.data[table] = tableData
-          
-          if (table === 'DestinyInventoryItemDefinition') {
-            manifestData.metadata.itemCount = Object.keys(tableData).length
-          }
-          
-          console.log(`  ✅ ${table} downloaded`)
-        } else {
-          console.warn(`  ⚠️ Failed to download ${table}`)
+    for (const tableName of essentialTables) {
+      const tablePath = manifestPaths[tableName]
+      if (!tablePath) {
+        console.warn(`Table ${tableName} not found`)
+        continue
+      }
+      
+      const tableUrl = `https://www.bungie.net${tablePath}`
+      console.log(`Downloading ${tableName}...`)
+      
+      const tableResponse = await fetch(tableUrl, {
+        headers: {
+          'X-API-Key': process.env.BUNGIE_API_KEY,
+          'User-Agent': 'CastingDestinyV2-Updater/1.0'
         }
-      } catch (error) {
-        console.error(`  ❌ Error downloading ${table}:`, error.message)
+      })
+      
+      if (!tableResponse.ok) {
+        console.error(`Failed to download ${tableName}: ${tableResponse.status}`)
+        continue
+      }
+      
+      const tableData = await tableResponse.json()
+      manifestData.data[tableName] = tableData
+      
+      // Count items
+      if (tableName === 'DestinyInventoryItemDefinition') {
+        manifestData.metadata.itemCount = Object.keys(tableData).length
       }
     }
     
@@ -115,14 +118,12 @@ async function updateManifest() {
     console.log('💾 Saving manifest to GitHub...')
     await githubStorage.saveManifest(manifestData)
     
-    console.log('✅ Manifest update completed successfully!')
-    
+    console.log('✅ Manifest update complete!')
     return {
       success: true,
       updated: true,
       version: latestVersion,
-      itemCount: manifestData.metadata.itemCount,
-      tables: Object.keys(manifestData.data).length
+      itemCount: manifestData.metadata.itemCount
     }
     
   } catch (error) {
@@ -131,17 +132,13 @@ async function updateManifest() {
   }
 }
 
-// Run if called directly
-if (process.argv[1] === new URL(import.meta.url).pathname) {
-  updateManifest()
-    .then(result => {
-      console.log('Update result:', result)
-      process.exit(0)
-    })
-    .catch(error => {
-      console.error('Update failed:', error)
-      process.exit(1)
-    })
-}
-
-export default updateManifest
+// Run the update
+updateManifest()
+  .then(result => {
+    console.log('Update result:', result)
+    process.exit(0)
+  })
+  .catch(error => {
+    console.error('Update failed:', error)
+    process.exit(1)
+  })

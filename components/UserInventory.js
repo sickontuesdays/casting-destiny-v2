@@ -1,422 +1,348 @@
+// components/UserInventory.js
+// Component for displaying user's Destiny 2 inventory
+
 import { useState, useEffect } from 'react'
-import { useAuth } from '../lib/useAuth'
 
-export default function UserInventory({ onItemSelected, onBuildApply }) {
-  const { session, isLoading: authLoading } = useAuth()
+export default function UserInventory({ session, manifest, onItemSelect, onLoadComplete }) {
   const [inventory, setInventory] = useState(null)
-  const [isLoadingInventory, setIsLoadingInventory] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedCharacter, setSelectedCharacter] = useState(0)
-  const [filterCategory, setFilterCategory] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedItems, setSelectedItems] = useState({
-    kinetic: null,
-    energy: null,
-    power: null,
-    helmet: null,
-    gauntlets: null,
-    chest: null,
-    legs: null,
-    classItem: null
-  })
-  const [lastRefresh, setLastRefresh] = useState(null)
-  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [filter, setFilter] = useState('all')
+  const [selectedClass, setSelectedClass] = useState(null)
 
   useEffect(() => {
-    if (session?.user && session.accessToken) {
-      loadUserInventory()
+    if (session && manifest) {
+      loadInventory()
     }
-  }, [session])
+  }, [session, manifest])
 
-  // Auto-refresh every 5 minutes if enabled
-  useEffect(() => {
-    if (!autoRefresh || !session) return
-    
-    const interval = setInterval(() => {
-      loadUserInventory(true)
-    }, 5 * 60 * 1000) // 5 minutes
-    
-    return () => clearInterval(interval)
-  }, [autoRefresh, session])
-
-  const loadUserInventory = async (silent = false) => {
-    if (!session?.user || !session.accessToken) {
-      setError('Authentication required to load inventory')
+  const loadInventory = async () => {
+    if (!session?.primaryMembership) {
+      setError('No Destiny membership found')
       return
     }
-
-    if (!silent) {
-      setIsLoadingInventory(true)
-    }
-    setError(null)
 
     try {
-      console.log('Loading user inventory...')
+      setLoading(true)
+      setError(null)
       
-      const response = await fetch('/api/bungie/inventory', {
-        method: 'GET',
-        credentials: 'include'
-      })
-
+      const { membershipType, membershipId } = session.primaryMembership
+      
+      const response = await fetch(`/api/bungie/inventory?membershipType=${membershipType}&membershipId=${membershipId}`)
+      
       if (!response.ok) {
-        const errorData = await response.json()
-        
-        if (response.status === 401) {
-          throw new Error('Session expired. Please sign in again.')
-        }
-        
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+        throw new Error('Failed to load inventory')
       }
-
+      
       const data = await response.json()
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to load inventory')
-      }
-
-      console.log('Inventory loaded successfully')
-      console.log(`Characters: ${data.characters?.length || 0}`)
-      console.log(`Vault items: ${Object.values(data.vault || {}).flat().length}`)
-      console.log(`Friends: ${data.friends?.length || 0}`)
-      
       setInventory(data)
-      setLastRefresh(new Date())
       
-      // Select first character by default
-      if (data.characters?.length > 0 && selectedCharacter === 0) {
-        setSelectedCharacter(0)
+      if (onLoadComplete) {
+        onLoadComplete()
       }
-
+      
     } catch (error) {
-      console.error('Failed to load inventory:', error)
+      console.error('Error loading inventory:', error)
       setError(error.message)
     } finally {
-      if (!silent) {
-        setIsLoadingInventory(false)
-      }
-    }
-  }
-
-  const handleItemSelect = (item, slot) => {
-    const newSelection = { ...selectedItems }
-    newSelection[slot] = item
-    setSelectedItems(newSelection)
-    
-    if (onItemSelected) {
-      onItemSelected(newSelection)
-    }
-  }
-
-  const handleApplyBuild = async () => {
-    if (!selectedCharacter || !inventory?.characters?.[selectedCharacter]) {
-      setError('Please select a character')
-      return
-    }
-
-    const character = inventory.characters[selectedCharacter]
-    const buildItems = Object.values(selectedItems).filter(item => item !== null)
-    
-    if (buildItems.length === 0) {
-      setError('Please select items for your build')
-      return
-    }
-
-    if (onBuildApply) {
-      onBuildApply({
-        character,
-        items: selectedItems,
-        timestamp: new Date().toISOString()
-      })
+      setLoading(false)
     }
   }
 
   const filterItems = (items) => {
-    if (!items || !Array.isArray(items)) return []
+    if (!items) return []
     
-    return items.filter(item => {
-      if (!item) return false
-      
-      // Filter by category
-      if (filterCategory !== 'all') {
-        if (filterCategory === 'exotic' && !item.isExotic) return false
-        if (filterCategory === 'legendary' && !item.isLegendary) return false
-        if (filterCategory === 'weapons' && item.itemType !== 3) return false
-        if (filterCategory === 'armor' && item.itemType !== 2) return false
-        if (filterCategory === 'mods' && item.itemType !== 19 && item.itemType !== 20) return false
-      }
-      
-      // Filter by search term
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase()
-        const name = item.displayProperties?.name?.toLowerCase() || ''
-        const description = item.displayProperties?.description?.toLowerCase() || ''
-        
-        if (!name.includes(search) && !description.includes(search)) {
-          return false
-        }
-      }
-      
-      return true
-    })
+    let filtered = [...items]
+    
+    // Filter by type
+    if (filter === 'armor') {
+      filtered = filtered.filter(item => item.itemType === 2)
+    } else if (filter === 'weapons') {
+      filtered = filtered.filter(item => item.itemType === 3)
+    } else if (filter === 'exotics') {
+      filtered = filtered.filter(item => item.tierType === 6)
+    }
+    
+    // Filter by class if selected
+    if (selectedClass !== null) {
+      filtered = filtered.filter(item => 
+        item.classType === selectedClass || item.classType === 3
+      )
+    }
+    
+    return filtered
   }
 
-  const renderCharacterSelect = () => {
-    if (!inventory?.characters?.length) return null
-    
+  if (loading) {
     return (
-      <div className="character-select">
-        <label>Character:</label>
-        <select 
-          value={selectedCharacter} 
-          onChange={(e) => setSelectedCharacter(parseInt(e.target.value))}
-        >
-          {inventory.characters.map((char, index) => (
-            <option key={char.characterId} value={index}>
-              {char.className} - Power {char.stats?.power || char.light || 0}
-            </option>
-          ))}
-        </select>
-      </div>
-    )
-  }
-
-  const renderInventoryStats = () => {
-    if (!inventory) return null
-    
-    const character = inventory.characters?.[selectedCharacter]
-    if (!character?.stats) return null
-    
-    return (
-      <div className="character-stats">
-        <h4>Character Stats</h4>
-        <div className="stats-grid">
-          <div className="stat">
-            <span className="stat-name">Mobility:</span>
-            <span className="stat-value">{character.stats.mobility || 0}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-name">Resilience:</span>
-            <span className="stat-value">{character.stats.resilience || 0}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-name">Recovery:</span>
-            <span className="stat-value">{character.stats.recovery || 0}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-name">Discipline:</span>
-            <span className="stat-value">{character.stats.discipline || 0}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-name">Intellect:</span>
-            <span className="stat-value">{character.stats.intellect || 0}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-name">Strength:</span>
-            <span className="stat-value">{character.stats.strength || 0}</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const renderItem = (item, slot) => {
-    if (!item) return null
-    
-    const isSelected = selectedItems[slot]?.itemInstanceId === item.itemInstanceId
-    
-    return (
-      <div 
-        key={item.itemInstanceId || item.itemHash}
-        className={`inventory-item ${item.isExotic ? 'exotic' : ''} ${item.isLegendary ? 'legendary' : ''} ${isSelected ? 'selected' : ''}`}
-        onClick={() => handleItemSelect(item, slot)}
-        title={item.displayProperties?.description}
-      >
-        {item.displayProperties?.icon && (
-          <img 
-            src={`https://www.bungie.net${item.displayProperties.icon}`} 
-            alt={item.displayProperties?.name}
-            className="item-icon"
-          />
-        )}
-        <div className="item-info">
-          <div className="item-name">{item.displayProperties?.name || 'Unknown Item'}</div>
-          {item.powerLevel && (
-            <div className="item-power">{item.powerLevel}</div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (authLoading || isLoadingInventory) {
-    return (
-      <div className="inventory-loading">
+      <div className="user-inventory loading">
         <div className="loading-spinner"></div>
         <p>Loading inventory...</p>
       </div>
     )
   }
 
-  if (!session?.user) {
-    return (
-      <div className="inventory-auth-required">
-        <p>Please sign in to view your inventory</p>
-      </div>
-    )
-  }
-
   if (error) {
     return (
-      <div className="inventory-error">
-        <p className="error-message">⚠️ {error}</p>
-        <button onClick={() => loadUserInventory()} className="retry-btn">
-          Retry
-        </button>
+      <div className="user-inventory error">
+        <p>Error: {error}</p>
+        <button onClick={loadInventory}>Retry</button>
       </div>
     )
   }
 
-  if (!inventory) {
-    return (
-      <div className="inventory-empty">
-        <p>No inventory data available</p>
-        <button onClick={() => loadUserInventory()} className="load-btn">
-          Load Inventory
-        </button>
-      </div>
-    )
-  }
-
-  const character = inventory.characters?.[selectedCharacter]
-  const allItems = [
-    ...(character?.equipment || []),
-    ...(character?.inventory || []),
-    ...Object.values(inventory.vault || {}).flat()
-  ]
-  
-  const filteredItems = filterItems(allItems)
+  const items = filterItems(inventory?.items)
 
   return (
     <div className="user-inventory">
       <div className="inventory-header">
-        <h3>Inventory</h3>
-        <div className="inventory-controls">
-          {renderCharacterSelect()}
+        <h3>Your Inventory</h3>
+        <button className="refresh-btn" onClick={loadInventory}>
+          🔄
+        </button>
+      </div>
+
+      <div className="filter-controls">
+        <div className="filter-tabs">
           <button 
-            onClick={() => loadUserInventory()} 
-            className="refresh-btn"
-            disabled={isLoadingInventory}
+            className={filter === 'all' ? 'active' : ''}
+            onClick={() => setFilter('all')}
           >
-            🔄 Refresh
+            All
           </button>
-          <label className="auto-refresh">
-            <input 
-              type="checkbox" 
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
-            Auto-refresh
-          </label>
+          <button 
+            className={filter === 'armor' ? 'active' : ''}
+            onClick={() => setFilter('armor')}
+          >
+            Armor
+          </button>
+          <button 
+            className={filter === 'weapons' ? 'active' : ''}
+            onClick={() => setFilter('weapons')}
+          >
+            Weapons
+          </button>
+          <button 
+            className={filter === 'exotics' ? 'active' : ''}
+            onClick={() => setFilter('exotics')}
+          >
+            Exotics
+          </button>
         </div>
-        {lastRefresh && (
-          <div className="last-refresh">
-            Last updated: {lastRefresh.toLocaleTimeString()}
+
+        <div className="class-filter">
+          <button 
+            className={selectedClass === null ? 'active' : ''}
+            onClick={() => setSelectedClass(null)}
+          >
+            All Classes
+          </button>
+          <button 
+            className={selectedClass === 0 ? 'active' : ''}
+            onClick={() => setSelectedClass(0)}
+          >
+            Titan
+          </button>
+          <button 
+            className={selectedClass === 1 ? 'active' : ''}
+            onClick={() => setSelectedClass(1)}
+          >
+            Hunter
+          </button>
+          <button 
+            className={selectedClass === 2 ? 'active' : ''}
+            onClick={() => setSelectedClass(2)}
+          >
+            Warlock
+          </button>
+        </div>
+      </div>
+
+      <div className="inventory-grid">
+        {items && items.length > 0 ? (
+          items.map(item => (
+            <div 
+              key={item.instanceId || item.itemHash}
+              className="inventory-item"
+              onClick={() => onItemSelect && onItemSelect(item)}
+            >
+              {item.icon && (
+                <img src={item.icon} alt={item.name} />
+              )}
+              <div className="item-overlay">
+                <div className="item-name">{item.name}</div>
+                <div className="item-power">{item.power} ⚡</div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="no-items">
+            <p>No items found</p>
           </div>
         )}
       </div>
 
-      {renderInventoryStats()}
+      <style jsx>{`
+        .user-inventory {
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid #333;
+          border-radius: 8px;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+        }
 
-      <div className="inventory-filters">
-        <input
-          type="text"
-          placeholder="Search items..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="search-input"
-        />
-        <select 
-          value={filterCategory} 
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="filter-select"
-        >
-          <option value="all">All Items</option>
-          <option value="exotic">Exotic</option>
-          <option value="legendary">Legendary</option>
-          <option value="weapons">Weapons</option>
-          <option value="armor">Armor</option>
-          <option value="mods">Mods</option>
-        </select>
-      </div>
+        .user-inventory.loading,
+        .user-inventory.error {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 400px;
+          flex-direction: column;
+          gap: 16px;
+        }
 
-      <div className="inventory-grid">
-        {filteredItems.length > 0 ? (
-          filteredItems.map(item => {
-            // Determine slot based on item type
-            let slot = 'other'
-            if (item.itemType === 2) { // Armor
-              switch (item.itemSubType) {
-                case 26: slot = 'helmet'; break
-                case 27: slot = 'gauntlets'; break
-                case 28: slot = 'chest'; break
-                case 29: slot = 'legs'; break
-                case 30: slot = 'classItem'; break
-              }
-            } else if (item.itemType === 3) { // Weapon
-              switch (item.itemSubType) {
-                case 6:
-                case 7:
-                case 8:
-                case 9:
-                case 10:
-                  slot = 'kinetic'; break
-                case 11:
-                case 12:
-                case 13:
-                  slot = 'energy'; break
-                case 18:
-                case 19:
-                case 20:
-                case 21:
-                  slot = 'power'; break
-              }
-            }
-            
-            return renderItem(item, slot)
-          })
-        ) : (
-          <p className="no-items">No items found</p>
-        )}
-      </div>
+        .loading-spinner {
+          width: 40px;
+          height: 40px;
+          border: 3px solid rgba(255, 107, 53, 0.3);
+          border-radius: 50%;
+          border-top-color: #ff6b35;
+          animation: spin 1s ease-in-out infinite;
+        }
 
-      {Object.values(selectedItems).some(item => item !== null) && (
-        <div className="build-actions">
-          <button 
-            onClick={handleApplyBuild}
-            className="apply-build-btn"
-          >
-            Apply Build to Character
-          </button>
-          <button 
-            onClick={() => setSelectedItems({
-              kinetic: null, energy: null, power: null,
-              helmet: null, gauntlets: null, chest: null,
-              legs: null, classItem: null
-            })}
-            className="clear-btn"
-          >
-            Clear Selection
-          </button>
-        </div>
-      )}
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
 
-      {inventory.friends?.length > 0 && (
-        <div className="inventory-footer">
-          <p className="friends-count">
-            {inventory.friends.length} friends available for build sharing
-          </p>
-        </div>
-      )}
+        .inventory-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          background: rgba(0, 0, 0, 0.5);
+          border-bottom: 1px solid #333;
+        }
+
+        .inventory-header h3 {
+          margin: 0;
+          color: #ff6b35;
+        }
+
+        .refresh-btn {
+          background: none;
+          border: none;
+          font-size: 18px;
+          cursor: pointer;
+          padding: 4px 8px;
+        }
+
+        .filter-controls {
+          padding: 12px 20px;
+          border-bottom: 1px solid #333;
+        }
+
+        .filter-tabs,
+        .class-filter {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .filter-tabs button,
+        .class-filter button {
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid #333;
+          color: #999;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.2s;
+        }
+
+        .filter-tabs button.active,
+        .class-filter button.active {
+          background: rgba(255, 107, 53, 0.2);
+          border-color: #ff6b35;
+          color: #ff6b35;
+        }
+
+        .inventory-grid {
+          flex: 1;
+          overflow-y: auto;
+          padding: 20px;
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+          gap: 8px;
+        }
+
+        .inventory-item {
+          position: relative;
+          background: rgba(0, 0, 0, 0.5);
+          border: 1px solid #333;
+          border-radius: 4px;
+          aspect-ratio: 1;
+          cursor: pointer;
+          overflow: hidden;
+          transition: all 0.2s;
+        }
+
+        .inventory-item:hover {
+          border-color: #ff6b35;
+          transform: scale(1.05);
+        }
+
+        .inventory-item img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .item-overlay {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
+          padding: 4px;
+          opacity: 0;
+          transition: opacity 0.2s;
+        }
+
+        .inventory-item:hover .item-overlay {
+          opacity: 1;
+        }
+
+        .item-name {
+          font-size: 10px;
+          color: #fff;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .item-power {
+          font-size: 10px;
+          color: #4fc3f7;
+        }
+
+        .no-items {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: 40px;
+          color: #666;
+        }
+
+        .error button {
+          background: #ff6b35;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+      `}</style>
     </div>
   )
 }

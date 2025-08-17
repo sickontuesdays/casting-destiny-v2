@@ -1,76 +1,79 @@
 // pages/api/github/manifest.js
-import { getGitHubStorage } from '../../../lib/github-storage'
+// API endpoint for loading manifest from GitHub cache
+
+import { getGitHubStorage } from '../../lib/github-storage'
 
 export default async function handler(req, res) {
+  // Only allow GET requests
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
-    const githubStorage = getGitHubStorage()
+    console.log('Loading manifest from GitHub cache...')
     
-    // Load manifest from GitHub
+    const githubStorage = getGitHubStorage()
     const manifest = await githubStorage.loadManifest()
     
     if (!manifest) {
-      // Return 404 if no manifest is cached
+      // Manifest not found in GitHub cache
       return res.status(404).json({ 
-        error: 'No manifest found in GitHub cache',
-        message: 'Please use the admin panel to download the manifest first'
+        error: 'Manifest not found in cache',
+        message: 'Please use the admin panel to pull the manifest from Bungie first'
       })
     }
-
-    // Set cache headers for client-side caching
-    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
+    
+    // Check if manifest is stale
+    if (manifest.isStale) {
+      console.warn('Manifest is stale, consider updating from admin panel')
+    }
+    
+    // Add cache headers for client-side caching
+    res.setHeader('Cache-Control', 'public, max-age=3600') // Cache for 1 hour
     
     return res.status(200).json(manifest)
-
+    
   } catch (error) {
     console.error('Error loading manifest from GitHub:', error)
+    
     return res.status(500).json({ 
-      error: 'Failed to load manifest from GitHub',
+      error: 'Failed to load manifest',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }
 }
 
-// pages/api/github/manifest/status.js
-export async function statusHandler(req, res) {
-  if (req.method !== 'GET') {
+// Optional: Add a POST endpoint for saving manifest (admin only)
+export async function saveManifest(req, res) {
+  if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
-    const githubStorage = getGitHubStorage()
+    // TODO: Add admin authentication check here
+    // if (!isAdmin(req)) {
+    //   return res.status(403).json({ error: 'Forbidden' })
+    // }
+
+    const { manifest } = req.body
     
-    // Get metadata without downloading full manifest
-    const metadata = await githubStorage.getManifestMetadata()
-    
-    if (!metadata) {
-      return res.status(404).json({ 
-        exists: false,
-        message: 'No manifest cached in GitHub'
-      })
+    if (!manifest) {
+      return res.status(400).json({ error: 'Manifest data required' })
     }
-
-    // Check if stale
-    const age = Date.now() - new Date(metadata.lastUpdated).getTime()
-    const isStale = age > (7 * 24 * 60 * 60 * 1000) // 7 days
-
-    return res.status(200).json({
-      exists: true,
-      version: metadata.version,
-      lastUpdated: metadata.lastUpdated,
-      itemCount: metadata.itemCount,
-      size: metadata.size,
-      isStale,
-      age: Math.floor(age / (1000 * 60 * 60)) // Age in hours
+    
+    const githubStorage = getGitHubStorage()
+    await githubStorage.saveManifest(manifest)
+    
+    return res.status(200).json({ 
+      success: true,
+      message: 'Manifest saved to GitHub successfully'
     })
-
+    
   } catch (error) {
-    console.error('Error checking manifest status:', error)
+    console.error('Error saving manifest to GitHub:', error)
+    
     return res.status(500).json({ 
-      error: 'Failed to check manifest status',
+      error: 'Failed to save manifest',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }

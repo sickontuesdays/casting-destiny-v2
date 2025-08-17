@@ -1,29 +1,7 @@
+// pages/api/admin/manifest-pull.js
+// Admin endpoint to pull manifest from Bungie and save to GitHub
+
 import { getGitHubStorage } from '../../../lib/github-storage'
-import { jwtVerify } from 'jose'
-
-const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
-
-async function verifyAdminSession(req) {
-  try {
-    const sessionCookie = req.cookies['bungie-session']
-    if (!sessionCookie) return false
-
-    const { payload } = await jwtVerify(sessionCookie, secret)
-    
-    // Check if session is valid and user is authenticated
-    if (!payload?.user || Date.now() > payload.expiresAt) {
-      return false
-    }
-
-    // Optional: Add admin user check here
-    // For now, any authenticated user can pull manifest from admin panel
-    return true
-
-  } catch (error) {
-    console.error('Session verification failed:', error)
-    return false
-  }
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,22 +9,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Verify admin access
-    const isAdmin = await verifyAdminSession(req)
-    
-    if (!isAdmin) {
-      return res.status(401).json({ error: 'Admin authentication required' })
+    // Check admin authentication
+    const adminPassword = req.headers['x-admin-password']
+    if (adminPassword !== process.env.ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'Unauthorized' })
     }
 
-    console.log('🔄 Admin requested manifest pull from Bungie...')
-
-    // Step 1: Get manifest metadata from Bungie
+    console.log('Admin: Starting manifest pull from Bungie...')
+    
+    // Step 1: Get manifest info from Bungie
     const manifestUrl = 'https://www.bungie.net/Platform/Destiny2/Manifest/'
     
     const manifestResponse = await fetch(manifestUrl, {
       headers: {
-        'X-API-Key': process.env.BUNGIE_API_KEY,
-        'User-Agent': 'CastingDestinyV2/1.0'
+        'X-API-Key': process.env.BUNGIE_API_KEY
       }
     })
 
@@ -61,29 +37,11 @@ export default async function handler(req, res) {
     }
 
     const version = manifestInfo.Response.version
-    console.log('Found manifest version:', version)
-
-    // Check if we already have this version
-    const githubStorage = getGitHubStorage()
-    const existingMetadata = await githubStorage.getManifestMetadata()
-    
-    if (existingMetadata?.version === version) {
-      return res.status(200).json({
-        success: true,
-        message: 'Manifest is already up to date',
-        version,
-        cached: true
-      })
-    }
-
-    // Step 2: Download the manifest data
     const manifestPaths = manifestInfo.Response.jsonWorldContentPaths.en
     
-    if (!manifestPaths) {
-      throw new Error('No English manifest data available')
-    }
+    console.log(`Found manifest version: ${version}`)
 
-    // We'll download only the essential definitions to reduce size
+    // Step 2: Download essential manifest tables
     const essentialTables = [
       'DestinyInventoryItemDefinition',
       'DestinyStatDefinition', 
@@ -97,10 +55,7 @@ export default async function handler(req, res) {
       'DestinySeasonDefinition',
       'DestinyPowerCapDefinition'
     ]
-
-    console.log('Downloading essential manifest tables...')
     
-    // Download each table separately to manage memory
     const manifestData = {
       version,
       lastUpdated: new Date().toISOString(),
@@ -110,39 +65,46 @@ export default async function handler(req, res) {
         processedAt: new Date().toISOString()
       }
     }
-
-    for (const table of essentialTables) {
-      try {
-        const tableUrl = `https://www.bungie.net${manifestPaths}/${table}.json`
-        const tableResponse = await fetch(tableUrl, {
-          headers: {
-            'User-Agent': 'CastingDestinyV2/1.0'
-          }
-        })
-        
-        if (tableResponse.ok) {
-          const tableData = await tableResponse.json()
-          manifestData.data[table] = tableData
-          
-          if (table === 'DestinyInventoryItemDefinition') {
-            manifestData.metadata.itemCount = Object.keys(tableData).length
-          }
-          
-          console.log(`✅ Downloaded ${table}`)
-        } else {
-          console.warn(`⚠️ Failed to download ${table}`)
+    
+    // Download each table
+    for (const tableName of essentialTables) {
+      const tablePath = manifestPaths[tableName]
+      if (!tablePath) {
+        console.warn(`Table ${tableName} not found in manifest`)
+        continue
+      }
+      
+      const tableUrl = `https://www.bungie.net${tablePath}`
+      console.log(`Downloading ${tableName}...`)
+      
+      const tableResponse = await fetch(tableUrl, {
+        headers: {
+          'X-API-Key': process.env.BUNGIE_API_KEY
         }
-      } catch (error) {
-        console.error(`Error downloading ${table}:`, error)
+      })
+      
+      if (!tableResponse.ok) {
+        console.error(`Failed to download ${tableName}: ${tableResponse.status}`)
+        continue
+      }
+      
+      const tableData = await tableResponse.json()
+      manifestData.data[tableName] = tableData
+      
+      // Count items
+      if (tableName === 'DestinyInventoryItemDefinition') {
+        manifestData.metadata.itemCount = Object.keys(tableData).length
       }
     }
-
-    console.log(`Manifest data prepared. Items: ${manifestData.metadata.itemCount}`)
+    
+    console.log(`Downloaded ${Object.keys(manifestData.data).length} tables`)
+    console.log(`Total items: ${manifestData.metadata.itemCount}`)
 
     // Step 3: Save to GitHub
     console.log('Saving manifest to GitHub...')
     
     try {
+      const githubStorage = getGitHubStorage()
       await githubStorage.saveManifest(manifestData)
       
       return res.status(200).json({

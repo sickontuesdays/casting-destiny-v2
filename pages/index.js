@@ -22,246 +22,172 @@ export default function Home() {
     
     if (urlParams.get('auth') === 'success') {
       console.log('Authentication successful!')
-      // Clean URL
       window.history.replaceState({}, document.title, '/')
       
-      // Load manifest from GitHub after successful login
-      if (!manifest && !manifestLoading) {
-        refreshManifest()
-      }
+      // Load manifest after successful login
+      refreshManifest()
     }
     
     if (urlParams.get('error')) {
       setLoginError(decodeURIComponent(urlParams.get('error')))
-      // Clean URL
       window.history.replaceState({}, document.title, '/')
     }
-  }, [])
+  }, [refreshManifest])
 
-  // Load user data after authentication
+  // Load manifest only after login
   useEffect(() => {
-    if (session && !inventoryLoaded && !manifestLoading) {
-      // Load manifest from GitHub if not already loaded
-      if (!manifest) {
-        refreshManifest()
-      }
-      setInventoryLoaded(true)
+    if (session && !manifest && !manifestLoading) {
+      console.log('User logged in, loading manifest from GitHub...')
+      refreshManifest()
     }
-  }, [session, inventoryLoaded, manifest, manifestLoading])
+  }, [session, manifest, manifestLoading, refreshManifest])
 
-  // Show loading only during auth check
+  // App loads immediately - no authentication required to view
   if (authLoading) {
     return (
       <div className="loading-screen">
-        <div className="loading-container">
-          <div className="loading-spinner"></div>
-          <p>Checking authentication...</p>
-        </div>
+        <div className="loading-spinner"></div>
+        <p>Checking authentication...</p>
       </div>
     )
   }
 
-  // Show login screen for unauthenticated users
+  // Show login screen if not authenticated
   if (!session) {
     return (
       <div className="login-screen">
         <div className="login-container">
-          <div className="app-header">
-            <h1>Casting Destiny v2</h1>
-            <p className="app-tagline">AI-Powered Build Optimization for Destiny 2</p>
-          </div>
+          <h1>Casting Destiny v2</h1>
+          <p className="tagline">AI-Powered Destiny 2 Build Optimization</p>
           
-          <div className="features-preview">
-            <h3>What's New in v2</h3>
-            <ul>
-              <li>🧠 Natural Language Build Requests</li>
-              <li>⚡ Advanced Synergy Analysis</li>
-              <li>🎯 Activity-Specific Optimization</li>
-              <li>👥 Social Build Sharing</li>
-              <li>📊 Enhanced Performance Scoring</li>
-            </ul>
-          </div>
-          
-          {(loginError || authError) && (
+          {loginError && (
             <div className="error-message">
-              <strong>Login Error:</strong> {loginError || authError}
-              <button 
-                onClick={() => {
-                  setLoginError('')
-                }}
-                className="error-close"
-              >
-                ×
-              </button>
+              <p>Login failed: {loginError}</p>
+            </div>
+          )}
+          
+          {authError && (
+            <div className="error-message">
+              <p>Authentication error: {authError}</p>
             </div>
           )}
           
           <button 
             className="bungie-login-btn"
-            onClick={() => window.location.href = '/api/auth/bungie-login'}
+            onClick={() => {
+              console.log('Initiating Bungie OAuth...')
+              window.location.href = '/api/auth/bungie-login'
+            }}
           >
-            <img src="/bungie-logo.svg" alt="Bungie" />
+            <img src="/bungie-logo.png" alt="Bungie" />
             Sign in with Bungie.net
           </button>
           
-          <div className="disclaimer">
-            <p>
-              This app requires access to your Destiny 2 character data to generate 
-              personalized build recommendations.
-            </p>
+          <div className="login-info">
+            <p>Sign in to access:</p>
+            <ul>
+              <li>Your Destiny 2 inventory</li>
+              <li>AI-powered build recommendations</li>
+              <li>Stat optimization</li>
+              <li>Loadout management</li>
+            </ul>
           </div>
         </div>
       </div>
     )
   }
 
-  // Main app interface for authenticated users
-  const handleBuildGenerated = (build) => {
-    setCurrentBuild(build)
-    setShowInventory(false)
-  }
-
-  const handleNewSearch = () => {
-    setCurrentBuild(null)
-    setBuildRequest('')
-    setLockedExotic(null)
-  }
-
-  const handleInventoryToggle = () => {
-    setShowInventory(!showInventory)
-  }
-
-  const handleExoticLocked = (exotic) => {
-    setLockedExotic(exotic)
-    setShowInventory(false)
-  }
-
+  // Main app interface - only shown after login
   return (
-    <div className="home-container">
-      <div className="main-content">
-        {/* User info bar */}
-        <div className="user-bar">
+    <div className="app-container">
+      <header className="app-header">
+        <div className="header-content">
+          <h1>Casting Destiny v2</h1>
           <div className="user-info">
-            <img 
-              src={session.user.avatar || '/default-guardian.png'} 
-              alt={session.user.displayName}
-              className="user-avatar"
-            />
-            <span className="user-name">{session.user.displayName}</span>
-            <span className="user-platform">({session.user.platforms?.[0] || 'Unknown'})</span>
-          </div>
-          
-          <div className="action-buttons">
+            {session.user?.avatar && (
+              <img 
+                src={session.user.avatar} 
+                alt={session.user.displayName}
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                }}
+              />
+            )}
+            <span>{session.user?.displayName || 'Guardian'}</span>
             <button 
-              onClick={handleInventoryToggle}
-              className="inventory-btn"
-              disabled={manifestLoading}
+              className="logout-btn"
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' })
+                window.location.reload()
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="app-main">
+        {/* Manifest loading indicator */}
+        {manifestLoading && (
+          <div className="manifest-loading">
+            <div className="loading-bar">
+              <div className="loading-progress"></div>
+            </div>
+            <p>Loading game data from GitHub cache...</p>
+          </div>
+        )}
+
+        {/* Main interface */}
+        <div className="build-interface">
+          <div className="left-panel">
+            <NaturalLanguageInput 
+              onSubmit={setBuildRequest}
+              disabled={!manifest}
+              placeholder={!manifest ? "Waiting for game data..." : "Describe your ideal build..."}
+            />
+            
+            {currentBuild && (
+              <BuildDisplay 
+                build={currentBuild}
+                onExoticLock={setLockedExotic}
+                lockedExotic={lockedExotic}
+              />
+            )}
+          </div>
+
+          <div className="right-panel">
+            <button 
+              className="inventory-toggle"
+              onClick={() => setShowInventory(!showInventory)}
+              disabled={!manifest}
             >
               {showInventory ? 'Hide' : 'Show'} Inventory
             </button>
             
-            <a href="/admin" className="admin-link">
-              Admin Panel
-            </a>
-            
-            <button 
-              onClick={() => window.location.href = '/api/auth/logout'}
-              className="logout-btn"
-            >
-              Sign Out
-            </button>
+            {showInventory && (
+              <UserInventory 
+                session={session}
+                manifest={manifest}
+                onItemSelect={(item) => console.log('Selected:', item)}
+                onLoadComplete={() => setInventoryLoaded(true)}
+              />
+            )}
           </div>
         </div>
 
-        {/* Manifest status */}
-        {!manifest && !manifestLoading && (
-          <div className="manifest-warning">
-            <span className="warning-icon">⚠️</span>
-            <span>Manifest not loaded. Visit the Admin Panel to download the manifest.</span>
-            <a href="/admin" className="warning-link">Go to Admin Panel</a>
+        {/* Status indicators */}
+        <div className="status-bar">
+          <div className="status-item">
+            <span className={`status-dot ${manifest ? 'active' : 'inactive'}`}></span>
+            <span>Game Data: {manifest ? 'Ready' : 'Not Loaded'}</span>
           </div>
-        )}
-
-        {manifestLoading && (
-          <div className="manifest-loading">
-            <div className="loading-spinner small"></div>
-            <span>Loading Destiny 2 data...</span>
+          <div className="status-item">
+            <span className={`status-dot ${inventoryLoaded ? 'active' : 'inactive'}`}></span>
+            <span>Inventory: {inventoryLoaded ? 'Loaded' : 'Not Loaded'}</span>
           </div>
-        )}
-
-        {/* Build interface */}
-        <div className="build-interface">
-          {!currentBuild ? (
-            <div className="build-creator">
-              <h2>Create Your Perfect Build</h2>
-              
-              {lockedExotic && (
-                <div className="locked-exotic">
-                  <span>Building around: </span>
-                  <strong>{lockedExotic.name}</strong>
-                  <button onClick={() => setLockedExotic(null)}>×</button>
-                </div>
-              )}
-              
-              <NaturalLanguageInput
-                onBuildGenerated={handleBuildGenerated}
-                value={buildRequest}
-                onChange={setBuildRequest}
-                lockedExotic={lockedExotic}
-                disabled={!manifest}
-                placeholder={!manifest ? "Please load manifest from Admin Panel first..." : "Describe your ideal build..."}
-              />
-              
-              <div className="quick-actions">
-                <button 
-                  onClick={() => setBuildRequest("Create a DPS build for raid boss damage")}
-                  disabled={!manifest}
-                >
-                  Raid DPS
-                </button>
-                <button 
-                  onClick={() => setBuildRequest("Make me tanky for grandmaster nightfalls")}
-                  disabled={!manifest}
-                >
-                  GM Tank
-                </button>
-                <button 
-                  onClick={() => setBuildRequest("PvP build focused on movement and map control")}
-                  disabled={!manifest}
-                >
-                  PvP Control
-                </button>
-                <button 
-                  onClick={() => setBuildRequest("Ability spam build with fast cooldowns")}
-                  disabled={!manifest}
-                >
-                  Ability Spam
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="build-results">
-              <BuildDisplay
-                build={currentBuild}
-                onNewSearch={handleNewSearch}
-                onSave={() => console.log('Save build')}
-                onShare={() => console.log('Share build')}
-              />
-            </div>
-          )}
         </div>
-
-        {/* Inventory panel */}
-        {showInventory && session && (
-          <div className="inventory-panel">
-            <UserInventory
-              session={session}
-              onExoticLocked={handleExoticLocked}
-              onClose={() => setShowInventory(false)}
-            />
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   )
 }
