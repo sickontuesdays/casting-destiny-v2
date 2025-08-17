@@ -34,13 +34,16 @@ export default function Home() {
     }
   }, [refreshManifest])
 
-  // Load manifest only after login
+  // Load manifest only after login (with retry prevention)
+  const [manifestAttempted, setManifestAttempted] = useState(false)
+  
   useEffect(() => {
-    if (session && !manifest && !manifestLoading) {
+    if (session && !manifest && !manifestLoading && !manifestAttempted) {
       console.log('User logged in, loading manifest from GitHub...')
+      setManifestAttempted(true)
       refreshManifest()
     }
-  }, [session, manifest, manifestLoading, refreshManifest])
+  }, [session, manifest, manifestLoading, manifestAttempted, refreshManifest])
 
   // App loads immediately - no authentication required to view
   if (authLoading) {

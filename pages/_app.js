@@ -31,6 +31,10 @@ function MyApp({ Component, pageProps }) {
         const data = await response.json()
         setManifest(data)
         console.log('✅ Manifest loaded from GitHub cache')
+      } else if (response.status === 404) {
+        // Don't retry on 404 - endpoint doesn't exist yet
+        console.warn('Manifest endpoint not found - may need to deploy fixes')
+        setManifestError('Manifest endpoint not deployed yet')
       } else {
         // Don't block app if manifest isn't available
         console.warn('Manifest not available in GitHub cache')
