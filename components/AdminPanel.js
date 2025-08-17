@@ -4,7 +4,6 @@
 import { useState, useEffect, useContext } from 'react'
 import { useAuth } from '../lib/useAuth'
 import { AppContext } from '../pages/_app'
-import { getManifestManager } from '../lib/manifest-manager'
 
 export default function AdminPanel() {
   const { session } = useAuth()
@@ -24,16 +23,20 @@ export default function AdminPanel() {
 
   const loadManifestInfo = async () => {
     try {
-      const manager = getManifestManager()
-      const metadata = await manager.getMetadata()
+      // Use API endpoint instead of direct GitHub access
+      const response = await fetch('/api/github/manifest/status')
       
-      if (metadata) {
-        setManifestInfo({
-          version: metadata.version,
-          lastUpdated: metadata.lastUpdated,
-          itemCount: metadata.itemCount,
-          size: metadata.size
-        })
+      if (response.ok) {
+        const data = await response.json()
+        
+        if (data.available) {
+          setManifestInfo({
+            version: data.version,
+            lastUpdated: data.lastUpdated,
+            itemCount: data.itemCount,
+            size: data.size
+          })
+        }
       }
     } catch (error) {
       console.error('Failed to load manifest info:', error)
