@@ -1,4 +1,7 @@
-import { getGitHubStorage } from '../../../lib/github-storage'
+// pages/api/github/manifest/status.js
+// API endpoint to check manifest status without downloading it
+
+import { getGitHubStorage } from '../../../../lib/github-storage'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {

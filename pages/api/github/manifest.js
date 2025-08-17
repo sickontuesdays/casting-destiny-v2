@@ -1,4 +1,7 @@
-import { getGitHubStorage } from '../../lib/github-storage'
+// pages/api/github/manifest.js
+// API endpoint for loading manifest from GitHub cache
+
+import { getGitHubStorage } from '../../../lib/github-storage'
 
 export default async function handler(req, res) {
   // Only allow GET requests
