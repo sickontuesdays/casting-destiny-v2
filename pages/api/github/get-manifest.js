@@ -1,5 +1,6 @@
-// pages/api/github/manifest.js
+// pages/api/github/get-manifest.js
 // API endpoint for loading manifest from GitHub cache
+// RENAMED from manifest.js to avoid conflict with manifest/ folder
 
 import { getGitHubStorage } from '../../../lib/github-storage'
 

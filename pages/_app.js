@@ -24,8 +24,8 @@ function MyApp({ Component, pageProps }) {
       setManifestLoading(true)
       setManifestError(null)
       
-      // Load from GitHub cache endpoint
-      const response = await fetch('/api/github/manifest')
+      // Load from GitHub cache endpoint (renamed to avoid conflict)
+      const response = await fetch('/api/github/get-manifest')
       
       if (response.ok) {
         const data = await response.json()
