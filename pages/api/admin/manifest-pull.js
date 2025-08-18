@@ -37,15 +37,35 @@ export default async function handler(req, res) {
     }
 
     const version = manifestInfo.Response.version
-    const manifestPaths = manifestInfo.Response.jsonWorldContentPaths.en
-    
     console.log(`Found manifest version: ${version}`)
 
-    // Step 2: Download essential manifest tables
-    const essentialTables = [
-      'DestinyInventoryItemDefinition'  // Start with just the main item table
-    ]
+    // Step 2: Get the aggregated world content path (this contains all definitions)
+    const worldContentPath = manifestInfo.Response.jsonWorldContentPaths?.en
     
+    if (!worldContentPath) {
+      throw new Error('No world content path found in manifest')
+    }
+
+    console.log(`World content path: ${worldContentPath}`)
+    
+    // Step 3: Download the complete world content
+    const worldUrl = `https://www.bungie.net${worldContentPath}`
+    console.log(`Downloading world content from: ${worldUrl}`)
+    
+    const worldResponse = await fetch(worldUrl, {
+      headers: {
+        'X-API-Key': process.env.BUNGIE_API_KEY
+      }
+    })
+
+    if (!worldResponse.ok) {
+      throw new Error(`Failed to download world content: ${worldResponse.status}`)
+    }
+
+    const worldData = await worldResponse.json()
+    console.log(`Downloaded world content with ${Object.keys(worldData).length} definition tables`)
+    
+    // Step 4: Extract just the essential tables to reduce size
     const manifestData = {
       version,
       lastUpdated: new Date().toISOString(),
@@ -56,46 +76,30 @@ export default async function handler(req, res) {
       }
     }
     
-    // Download each table
+    // Only include the most essential tables for builds
+    const essentialTables = [
+      'DestinyInventoryItemDefinition',  // All items (weapons, armor, etc)
+      'DestinyStatDefinition',           // Stat definitions
+      'DestinyClassDefinition',          // Class definitions
+      'DestinyDamageTypeDefinition',     // Damage types
+      'DestinyEnergyTypeDefinition'      // Energy types
+    ]
+    
     for (const tableName of essentialTables) {
-      const tablePath = manifestPaths[tableName]
-      if (!tablePath) {
-        console.warn(`Table ${tableName} not found in manifest`)
-        continue
-      }
-      
-      const tableUrl = `https://www.bungie.net${tablePath}`
-      console.log(`Downloading ${tableName} from ${tableUrl}`)
-      
-      const tableResponse = await fetch(tableUrl, {
-        headers: {
-          'X-API-Key': process.env.BUNGIE_API_KEY
+      if (worldData[tableName]) {
+        manifestData.data[tableName] = worldData[tableName]
+        console.log(`Added ${tableName}: ${Object.keys(worldData[tableName]).length} entries`)
+        
+        if (tableName === 'DestinyInventoryItemDefinition') {
+          manifestData.metadata.itemCount = Object.keys(worldData[tableName]).length
         }
-      })
-      
-      if (!tableResponse.ok) {
-        console.error(`Failed to download ${tableName}: ${tableResponse.status}`)
-        continue
-      }
-      
-      const tableData = await tableResponse.json()
-      
-      // Log what we actually got
-      console.log(`Downloaded ${tableName}: ${Object.keys(tableData).length} entries`)
-      
-      manifestData.data[tableName] = tableData
-      
-      // Count items
-      if (tableName === 'DestinyInventoryItemDefinition') {
-        manifestData.metadata.itemCount = Object.keys(tableData).length
-        console.log(`Item count set to: ${manifestData.metadata.itemCount}`)
       }
     }
     
-    console.log(`Downloaded ${Object.keys(manifestData.data).length} tables`)
+    console.log(`Prepared manifest with ${Object.keys(manifestData.data).length} tables`)
     console.log(`Total items: ${manifestData.metadata.itemCount}`)
 
-    // Step 3: Save to GitHub
+    // Step 5: Save to GitHub
     console.log('Saving manifest to GitHub...')
     
     try {
@@ -118,7 +122,8 @@ export default async function handler(req, res) {
         success: true,
         warning: 'Manifest downloaded but could not be saved to GitHub',
         message: saveError.message,
-        manifest: manifestData
+        itemCount: manifestData.metadata.itemCount,
+        tables: Object.keys(manifestData.data)
       })
     }
 
@@ -153,7 +158,7 @@ export async function scheduleHandler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Add internal auth token if needed
+        'X-Admin-Password': process.env.ADMIN_PASSWORD
       }
     })
 
