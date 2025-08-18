@@ -1,5 +1,3 @@
-// pages/api/admin/manifest-pull.js
-// Admin endpoint to pull manifest from Bungie and save to GitHub
 
 import { getGitHubStorage } from '../../../lib/github-storage'
 
@@ -89,21 +87,11 @@ export default async function handler(req, res) {
       }
       
       const tableData = await tableResponse.json()
+      manifestData.data[tableName] = tableData
       
-      // Only include essential data to reduce size
+      // Count items
       if (tableName === 'DestinyInventoryItemDefinition') {
-        // Filter to only include relevant items (armor, weapons, mods)
-        const filtered = {}
-        for (const [hash, item] of Object.entries(tableData)) {
-          // Only include armor (2), weapons (3), and mods (19, 59)
-          if ([2, 3, 19, 59].includes(item.itemType)) {
-            filtered[hash] = item
-          }
-        }
-        manifestData.data[tableName] = filtered
-        manifestData.metadata.itemCount = Object.keys(filtered).length
-      } else {
-        manifestData.data[tableName] = tableData
+        manifestData.metadata.itemCount = Object.keys(tableData).length
       }
     }
     
