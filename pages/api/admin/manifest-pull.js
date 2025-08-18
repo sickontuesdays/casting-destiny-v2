@@ -1,3 +1,5 @@
+// pages/api/admin/manifest-pull.js
+// Admin endpoint to pull manifest from Bungie and save to GitHub
 
 import { getGitHubStorage } from '../../../lib/github-storage'
 
@@ -41,17 +43,7 @@ export default async function handler(req, res) {
 
     // Step 2: Download essential manifest tables
     const essentialTables = [
-      'DestinyInventoryItemDefinition',
-      'DestinyStatDefinition', 
-      'DestinyClassDefinition',
-      'DestinySocketTypeDefinition',
-      'DestinySocketCategoryDefinition',
-      'DestinyActivityDefinition',
-      'DestinyActivityTypeDefinition',
-      'DestinyDamageTypeDefinition',
-      'DestinyEnergyTypeDefinition',
-      'DestinySeasonDefinition',
-      'DestinyPowerCapDefinition'
+      'DestinyInventoryItemDefinition'  // Start with just the main item table
     ]
     
     const manifestData = {
@@ -73,7 +65,7 @@ export default async function handler(req, res) {
       }
       
       const tableUrl = `https://www.bungie.net${tablePath}`
-      console.log(`Downloading ${tableName}...`)
+      console.log(`Downloading ${tableName} from ${tableUrl}`)
       
       const tableResponse = await fetch(tableUrl, {
         headers: {
@@ -87,11 +79,16 @@ export default async function handler(req, res) {
       }
       
       const tableData = await tableResponse.json()
+      
+      // Log what we actually got
+      console.log(`Downloaded ${tableName}: ${Object.keys(tableData).length} entries`)
+      
       manifestData.data[tableName] = tableData
       
       // Count items
       if (tableName === 'DestinyInventoryItemDefinition') {
         manifestData.metadata.itemCount = Object.keys(tableData).length
+        console.log(`Item count set to: ${manifestData.metadata.itemCount}`)
       }
     }
     
