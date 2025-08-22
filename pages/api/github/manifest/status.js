@@ -1,7 +1,5 @@
 // pages/api/github/manifest/status.js
-// API endpoint to check manifest status without downloading it
-
-import { getGitHubStorage } from '../../../../lib/github-storage'
+// Simple endpoint to check current manifest status in GitHub
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -9,46 +7,59 @@ export default async function handler(req, res) {
   }
 
   try {
-    const githubStorage = getGitHubStorage()
-    const metadata = await githubStorage.getManifestMetadata()
+    console.log('📊 Checking manifest status in GitHub...')
     
-    if (!metadata) {
-      return res.status(404).json({ 
+    // Try to load GitHub storage and check manifest
+    try {
+      const { getGitHubStorage } = await import('../../../../lib/github-storage')
+      const githubStorage = getGitHubStorage()
+      
+      // Get manifest metadata
+      const manifest = await githubStorage.loadManifest()
+      
+      if (!manifest) {
+        return res.status(404).json({
+          available: false,
+          message: 'No manifest found in GitHub repository',
+          suggestion: 'Use the admin panel to download manifest from Bungie'
+        })
+      }
+      
+      // Return manifest status
+      return res.status(200).json({
+        available: true,
+        version: manifest.version,
+        lastUpdated: manifest.lastUpdated,
+        itemCount: manifest.metadata?.itemCount || 0,
+        size: manifest.metadata?.downloadSize || null,
+        format: manifest.metadata?.compressionFormat || 'unknown',
+        processedAt: manifest.metadata?.processedAt,
+        isStale: manifest.isStale || false,
+        source: manifest.metadata?.source || 'unknown'
+      })
+      
+    } catch (githubError) {
+      console.error('Failed to access GitHub storage:', githubError.message)
+      
+      return res.status(500).json({
         available: false,
-        message: 'No manifest found in GitHub cache'
+        error: 'Failed to access GitHub storage',
+        details: githubError.message,
+        suggestions: [
+          'Check GitHub token configuration',
+          'Verify repository permissions', 
+          'Ensure GitHub storage is properly set up'
+        ]
       })
     }
-    
-    // Calculate age of manifest
-    const age = Date.now() - new Date(metadata.lastUpdated).getTime()
-    const ageInHours = Math.floor(age / (1000 * 60 * 60))
-    const ageInDays = Math.floor(ageInHours / 24)
-    
-    // Determine if manifest is stale (older than 7 days)
-    const isStale = ageInDays > 7
-    
-    return res.status(200).json({
-      available: true,
-      version: metadata.version,
-      lastUpdated: metadata.lastUpdated,
-      itemCount: metadata.itemCount,
-      size: metadata.size,
-      age: {
-        hours: ageInHours,
-        days: ageInDays,
-        text: ageInDays > 0 ? `${ageInDays} days ago` : `${ageInHours} hours ago`
-      },
-      isStale,
-      nextScheduledUpdate: 'Tuesday 1:30 PM EST'
-    })
-    
+
   } catch (error) {
     console.error('Error checking manifest status:', error)
     
-    return res.status(500).json({ 
+    return res.status(500).json({
       available: false,
       error: 'Failed to check manifest status',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: error.message
     })
   }
 }
