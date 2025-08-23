@@ -1,52 +1,63 @@
+// pages/api/auth/bungie-login.js
+// Initiates Bungie OAuth flow with proper state management
+
+import bungieOAuth from '../../../lib/bungie-oauth'
+
 export default function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
-    const clientId = process.env.BUNGIE_CLIENT_ID
-    const redirectUri = `${process.env.NEXTAUTH_URL}/api/auth/bungie-auth`
-    
-    if (!clientId) {
-      console.error('BUNGIE_CLIENT_ID not configured')
-      return res.status(500).json({ error: 'OAuth not configured' })
+    // Check if OAuth is properly configured
+    if (!process.env.BUNGIE_CLIENT_ID || !process.env.BUNGIE_CLIENT_SECRET || !process.env.BUNGIE_API_KEY) {
+      console.error('Missing Bungie OAuth configuration')
+      return res.status(500).json({ 
+        error: 'OAuth not configured',
+        missing: {
+          clientId: !process.env.BUNGIE_CLIENT_ID,
+          clientSecret: !process.env.BUNGIE_CLIENT_SECRET,
+          apiKey: !process.env.BUNGIE_API_KEY
+        }
+      })
     }
 
-    // Generate state parameter for security
-    const state = generateRandomState()
+    // Generate state for CSRF protection
+    const state = bungieOAuth.generateState()
     
-    // Store state in session/cookie for verification
+    // Store state in cookie for verification on callback
+    // Using httpOnly cookie for security
+    const isProduction = process.env.NODE_ENV === 'production'
+    
     res.setHeader('Set-Cookie', [
-      `oauth-state=${state}; HttpOnly; Secure=${process.env.NODE_ENV === 'production'}; SameSite=Lax; Path=/; Max-Age=600`
+      `oauth_state=${state}; HttpOnly; Secure=${isProduction}; SameSite=Lax; Path=/; Max-Age=600`
     ])
 
-    // Build Bungie OAuth URL
-    const authUrl = new URL('https://www.bungie.net/en/OAuth/Authorize')
-    authUrl.searchParams.set('client_id', clientId)
-    authUrl.searchParams.set('response_type', 'code')
-    authUrl.searchParams.set('redirect_uri', redirectUri)
-    authUrl.searchParams.set('state', state)
-    authUrl.searchParams.set('scope', 'ReadUserData')
-
-    console.log('Redirecting to Bungie OAuth:', authUrl.toString())
+    // Get authorization URL
+    const authUrl = bungieOAuth.getAuthorizationUrl(state)
+    
+    console.log('Initiating OAuth flow:', {
+      clientId: process.env.BUNGIE_CLIENT_ID,
+      redirectUri: bungieOAuth.redirectUri,
+      state: state.substring(0, 8) + '...'
+    })
     
     // Redirect to Bungie OAuth
-    res.redirect(302, authUrl.toString())
+    res.redirect(302, authUrl)
 
   } catch (error) {
     console.error('Error in bungie-login:', error)
-    res.status(500).json({ 
-      error: 'Failed to initiate OAuth',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    })
+    
+    // In development, show more details
+    if (process.env.NODE_ENV === 'development') {
+      return res.status(500).json({ 
+        error: 'Failed to initiate OAuth',
+        details: error.message,
+        stack: error.stack
+      })
+    }
+    
+    // In production, redirect with error
+    res.redirect('/?error=oauth_init_failed')
   }
-}
-
-function generateRandomState() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let result = ''
-  for (let i = 0; i < 32; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
 }
