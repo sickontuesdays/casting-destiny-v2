@@ -11,7 +11,8 @@ const FRIENDS_DIR = process.env.VERCEL ?
 
 async function getSessionFromRequest(req) {
   try {
-    const sessionCookie = req.cookies['bungie-session']
+    // Use correct cookie name (bungie_session with underscore)
+    const sessionCookie = req.cookies['bungie_session']
     if (!sessionCookie) return null
 
     const { payload } = await jwtVerify(sessionCookie, secret)
@@ -76,6 +77,7 @@ export default async function handler(req, res) {
   const session = await getSessionFromRequest(req)
   
   if (!session?.user) {
+    console.log('Friends API: Authentication failed - no session or user')
     return res.status(401).json({ error: 'Authentication required' })
   }
 
@@ -84,6 +86,11 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const friendsData = loadUserFriends(userId)
+      console.log(`Friends data loaded for user ${session.user.displayName}:`, {
+        friends: friendsData.friends.length,
+        pending: friendsData.pendingRequests.length,
+        sent: friendsData.sentRequests.length
+      })
       res.status(200).json(friendsData)
     } catch (error) {
       console.error('Error getting friends:', error)

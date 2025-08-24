@@ -5,7 +5,8 @@ const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
 
 async function getSessionFromCookie(req) {
   try {
-    const sessionCookie = req.cookies['bungie-session']
+    // Use correct cookie name (bungie_session with underscore)
+    const sessionCookie = req.cookies['bungie_session']
     if (!sessionCookie) return null
 
     const { payload } = await jwtVerify(sessionCookie, secret)
@@ -31,6 +32,7 @@ export default async function handler(req, res) {
     const session = await getSessionFromCookie(req)
     
     if (!session?.user) {
+      console.log('Build save API: Authentication failed - no session or user')
       return res.status(401).json({ error: 'Authentication required' })
     }
 

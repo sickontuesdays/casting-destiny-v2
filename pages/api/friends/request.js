@@ -11,7 +11,8 @@ const FRIENDS_DIR = process.env.VERCEL ?
 
 async function getSessionFromRequest(req) {
   try {
-    const sessionCookie = req.cookies['bungie-session']
+    // Use correct cookie name (bungie_session with underscore)
+    const sessionCookie = req.cookies['bungie_session']
     if (!sessionCookie) return null
 
     const { payload } = await jwtVerify(sessionCookie, secret)
@@ -71,87 +72,133 @@ export default async function handler(req, res) {
     const session = await getSessionFromRequest(req)
     
     if (!session?.user) {
+      console.log('Friends request API: Authentication failed - no session or user')
       return res.status(401).json({ error: 'Authentication required' })
     }
 
     const { targetUserId, targetDisplayName } = req.body
-    const userId = session.user.membershipId
 
-    if (!targetUserId) {
-      return res.status(400).json({ error: 'Target user ID required' })
+    if (!targetUserId || !targetDisplayName) {
+      return res.status(400).json({ error: 'Target user ID and display name are required' })
     }
 
+    const userId = session.user.membershipId
+
+    // Don't allow self friend requests
     if (userId === targetUserId) {
       return res.status(400).json({ error: 'Cannot send friend request to yourself' })
     }
 
-    console.log(`Processing friend request: ${userId} -> ${targetUserId}`)
+    console.log(`Processing friend request: ${session.user.displayName} -> ${targetDisplayName}`)
 
-    // Load current user's friends data
-    const senderFriends = loadUserFriends(userId)
-    
+    // Load current user's friend data
+    const userFriends = loadUserFriends(userId)
+    if (!userFriends.friends) userFriends.friends = []
+    if (!userFriends.sentRequests) userFriends.sentRequests = []
+    if (!userFriends.pendingRequests) userFriends.pendingRequests = []
+
     // Check if already friends
-    const isAlreadyFriend = senderFriends.friends.some(f => f.membershipId === targetUserId)
-    if (isAlreadyFriend) {
-      return res.status(400).json({ error: 'Already friends with this user' })
+    const existingFriend = userFriends.friends.find(f => f.membershipId === targetUserId)
+    if (existingFriend) {
+      return res.status(400).json({ error: 'User is already your friend' })
     }
 
     // Check if request already sent
-    const requestAlreadySent = senderFriends.sentRequests.some(r => r.targetUserId === targetUserId)
-    if (requestAlreadySent) {
-      return res.status(400).json({ error: 'Friend request already sent' })
+    const existingSentRequest = userFriends.sentRequests.find(r => r.membershipId === targetUserId)
+    if (existingSentRequest) {
+      return res.status(400).json({ error: 'Friend request already sent to this user' })
     }
 
-    // Create request data
-    const requestData = {
-      id: `${userId}-${targetUserId}-${Date.now()}`,
-      targetUserId,
-      targetDisplayName: targetDisplayName || 'Unknown User',
-      sentAt: new Date().toISOString()
-    }
-
-    // Add to sender's sent requests
-    if (!senderFriends.sentRequests) senderFriends.sentRequests = []
-    senderFriends.sentRequests.push(requestData)
+    // Check if there's already a pending request from target user (auto-accept)
+    const existingPendingRequest = userFriends.pendingRequests.find(r => r.membershipId === targetUserId)
     
-    const senderSaveSuccess = saveUserFriends(userId, senderFriends)
-    if (!senderSaveSuccess) {
-      return res.status(500).json({ error: 'Failed to save sender friend request' })
+    if (existingPendingRequest) {
+      console.log('Auto-accepting existing friend request')
+      
+      // Remove from pending requests
+      userFriends.pendingRequests = userFriends.pendingRequests.filter(r => r.membershipId !== targetUserId)
+      
+      // Add to friends
+      const newFriend = {
+        membershipId: targetUserId,
+        displayName: targetDisplayName,
+        addedAt: new Date().toISOString(),
+        platform: 'bungie'
+      }
+      userFriends.friends.push(newFriend)
+
+      // Load target user's data and update
+      const targetFriends = loadUserFriends(targetUserId)
+      if (!targetFriends.friends) targetFriends.friends = []
+      if (!targetFriends.sentRequests) targetFriends.sentRequests = []
+
+      // Remove from target user's sent requests and add to friends
+      targetFriends.sentRequests = targetFriends.sentRequests.filter(r => r.membershipId !== userId)
+      targetFriends.friends.push({
+        membershipId: userId,
+        displayName: session.user.displayName,
+        addedAt: new Date().toISOString(),
+        platform: 'bungie'
+      })
+
+      // Save both users' data
+      const userSaved = saveUserFriends(userId, userFriends)
+      const targetSaved = saveUserFriends(targetUserId, targetFriends)
+
+      if (!userSaved || !targetSaved) {
+        return res.status(500).json({ error: 'Failed to save friend relationship' })
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Friend request accepted automatically',
+        newFriend
+      })
     }
 
-    // Add to recipient's pending requests
-    const recipientFriends = loadUserFriends(targetUserId)
-    if (!recipientFriends.pendingRequests) recipientFriends.pendingRequests = []
-    
-    recipientFriends.pendingRequests.push({
-      id: requestData.id,
-      requesterId: userId,
-      requesterName: session.user.displayName,
-      requesterCode: session.user.displayNameCode || '',
-      createdAt: requestData.sentAt
+    // Create new friend request
+    const friendRequest = {
+      membershipId: targetUserId,
+      displayName: targetDisplayName,
+      sentAt: new Date().toISOString(),
+      platform: 'bungie'
+    }
+
+    // Add to current user's sent requests
+    userFriends.sentRequests.push(friendRequest)
+
+    // Load target user's data
+    const targetFriends = loadUserFriends(targetUserId)
+    if (!targetFriends.pendingRequests) targetFriends.pendingRequests = []
+
+    // Add to target user's pending requests
+    targetFriends.pendingRequests.push({
+      membershipId: userId,
+      displayName: session.user.displayName,
+      sentAt: new Date().toISOString(),
+      platform: 'bungie'
     })
 
-    const recipientSaveSuccess = saveUserFriends(targetUserId, recipientFriends)
-    if (!recipientSaveSuccess) {
-      // Rollback sender's sent request
-      senderFriends.sentRequests = senderFriends.sentRequests.filter(r => r.id !== requestData.id)
-      saveUserFriends(userId, senderFriends)
-      
-      return res.status(500).json({ error: 'Failed to save recipient friend request' })
+    // Save both users' data
+    const userSaved = saveUserFriends(userId, userFriends)
+    const targetSaved = saveUserFriends(targetUserId, targetFriends)
+
+    if (!userSaved || !targetSaved) {
+      return res.status(500).json({ error: 'Failed to send friend request' })
     }
 
-    console.log(`Friend request sent successfully: ${userId} -> ${targetUserId}`)
+    console.log(`Friend request sent successfully: ${session.user.displayName} -> ${targetDisplayName}`)
 
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
       message: 'Friend request sent successfully',
-      requestId: requestData.id
+      sentRequest: friendRequest
     })
 
   } catch (error) {
-    console.error('Error sending friend request:', error)
+    console.error('Error processing friend request:', error)
     res.status(500).json({ 
-      error: 'Failed to send friend request',
+      error: 'Failed to process friend request',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }
