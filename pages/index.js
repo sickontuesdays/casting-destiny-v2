@@ -64,35 +64,28 @@ export default function Home() {
           <p className="tagline">AI-Powered Destiny 2 Build Optimization</p>
           
           {loginError && (
-            <div className="error-message">
-              <p>Login failed: {loginError}</p>
+            <div className="error-banner">
+              <span className="error-icon">⚠️</span>
+              <span>{loginError}</span>
             </div>
           )}
-          
-          {authError && (
-            <div className="error-message">
-              <p>Authentication error: {authError}</p>
-            </div>
-          )}
-          
-          <button 
-            className="bungie-login-btn"
-            onClick={() => {
-              console.log('Initiating Bungie OAuth...')
-              window.location.href = '/api/auth/bungie-login'
-            }}
-          >
-            <img src="/bungie-logo.png" alt="Bungie" />
-            Sign in with Bungie.net
-          </button>
-          
+
+          <div className="login-actions">
+            <button 
+              className="login-btn primary"
+              onClick={() => window.location.href = '/api/auth/bungie-login'}
+            >
+              Sign in with Bungie.net
+            </button>
+          </div>
+
           <div className="login-info">
-            <p>Sign in to access:</p>
+            <p>Connect your Bungie.net account to:</p>
             <ul>
-              <li>Your Destiny 2 inventory</li>
-              <li>AI-powered build recommendations</li>
-              <li>Stat optimization</li>
-              <li>Loadout management</li>
+              <li>✓ Access your Destiny 2 inventory</li>
+              <li>✓ Generate personalized builds</li>
+              <li>✓ Save and share your creations</li>
+              <li>✓ Connect with friends</li>
             </ul>
           </div>
         </div>
@@ -100,54 +93,34 @@ export default function Home() {
     )
   }
 
-  // Main app interface - only shown after login
+  // Main app view for authenticated users
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <div className="header-content">
-          <h1>Casting Destiny v2</h1>
-          <div className="user-info">
-            {session.user?.avatar && (
-              <img 
-                src={session.user.avatar} 
-                alt={session.user.displayName}
-                onError={(e) => {
-                  e.target.style.display = 'none'
-                }}
-              />
-            )}
-            <span>{session.user?.displayName || 'Guardian'}</span>
-            <button 
-              className="logout-btn"
-              onClick={async () => {
-                await fetch('/api/auth/logout', { method: 'POST' })
-                window.location.reload()
-              }}
-            >
-              Logout
-            </button>
+    <div className="home-page">
+      {/* System Status Banner */}
+      {manifestLoading && (
+        <div className="intelligence-loading-banner">
+          <div className="loading-content">
+            <div className="loading-spinner small"></div>
+            <span>Loading game data from cache...</span>
           </div>
         </div>
-      </header>
+      )}
 
-      <main className="app-main">
-        {/* Manifest loading indicator */}
-        {manifestLoading && (
-          <div className="manifest-loading">
-            <div className="loading-bar">
-              <div className="loading-progress"></div>
+      {/* Main Build Creation Area */}
+      <div className="home-container">
+        <div className="build-creation-section">
+          <div className="creation-panel">
+            <div className="panel-header">
+              <h2>Build Creator</h2>
+              <p>Describe your ideal build and let AI intelligence create it for you</p>
             </div>
-            <p>Loading game data from GitHub cache...</p>
-          </div>
-        )}
 
-        {/* Main interface */}
-        <div className="build-interface">
-          <div className="left-panel">
             <NaturalLanguageInput 
-              onSubmit={setBuildRequest}
+              onBuildGenerated={setCurrentBuild}
               disabled={!manifest}
-              placeholder={!manifest ? "Waiting for game data..." : "Describe your ideal build..."}
+              lockedExotic={lockedExotic}
+              placeholder={!manifest ? 
+                "Waiting for game data..." : "Describe your ideal build..."}
             />
             
             {currentBuild && (
@@ -159,38 +132,52 @@ export default function Home() {
             )}
           </div>
 
-          <div className="right-panel">
-            <button 
-              className="inventory-toggle"
-              onClick={() => setShowInventory(!showInventory)}
-              disabled={!manifest}
-            >
-              {showInventory ? 'Hide' : 'Show'} Inventory
-            </button>
-            
-            {showInventory && (
-              <UserInventory 
-                session={session}
-                manifest={manifest}
-                onItemSelect={(item) => console.log('Selected:', item)}
-                onLoadComplete={() => setInventoryLoaded(true)}
-              />
-            )}
-          </div>
+          {/* Optional Inventory Panel (Toggleable) */}
+          {session && (
+            <div className="inventory-section">
+              <div className="inventory-controls">
+                <button 
+                  className={`inventory-toggle ${showInventory ? 'active' : ''}`}
+                  onClick={() => setShowInventory(!showInventory)}
+                  disabled={!manifest}
+                >
+                  <span className="toggle-icon">{showInventory ? '👁️‍🗨️' : '👁️'}</span>
+                  <span>{showInventory ? 'Hide' : 'Show'} Inventory</span>
+                </button>
+              </div>
+              
+              {showInventory && (
+                <div className="inventory-panel">
+                  <UserInventory 
+                    session={session}
+                    manifest={manifest}
+                    onItemSelect={(item) => console.log('Selected:', item)}
+                    onLoadComplete={() => setInventoryLoaded(true)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Status indicators */}
         <div className="status-bar">
           <div className="status-item">
             <span className={`status-dot ${manifest ? 'active' : 'inactive'}`}></span>
-            <span>Game Data: {manifest ? 'Ready' : 'Not Loaded'}</span>
+            <span>Game Data: {manifest ? 'Ready' : 'Loading...'}</span>
           </div>
           <div className="status-item">
             <span className={`status-dot ${inventoryLoaded ? 'active' : 'inactive'}`}></span>
             <span>Inventory: {inventoryLoaded ? 'Loaded' : 'Not Loaded'}</span>
           </div>
+          {session && (
+            <div className="status-item">
+              <span className="status-dot active"></span>
+              <span>Friends: Connected</span>
+            </div>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   )
 }
