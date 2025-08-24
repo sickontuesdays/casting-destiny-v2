@@ -9,10 +9,216 @@ export default function FriendSystem() {
   const [summary, setSummary] = useState(null)
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [selectedFriend, setSelectedFriend] = useState(null)
+  const [shareLoading, setShareLoading] = useState(false)
 
   useEffect(() => {
     if (session?.user) {
       loadFriends()
+    }
+
+  const ShareBuildModal = () => {
+    if (!showShareModal || !selectedFriend) return null
+
+    const [buildName, setBuildName] = useState('')
+    const [buildDescription, setBuildDescription] = useState('')
+    const [buildClass, setBuildClass] = useState('Titan')
+    const [buildActivity, setBuildActivity] = useState('General')
+
+    const handleSubmit = (e) => {
+      e.preventDefault()
+      
+      if (!buildName.trim()) {
+        alert('Please enter a build name')
+        return
+      }
+
+      const buildData = {
+        name: buildName.trim(),
+        description: buildDescription.trim(),
+        class: buildClass,
+        activity: buildActivity,
+        // Placeholder data - this would come from actual build creator
+        weapons: {
+          kinetic: { itemHash: 1234567890 }, // Example hash
+          energy: { itemHash: 2345678901 },
+          heavy: { itemHash: 3456789012 }
+        },
+        armor: {
+          helmet: { itemHash: 4567890123 },
+          gauntlets: { itemHash: 5678901234 },
+          chest: { itemHash: 6789012345 },
+          legs: { itemHash: 7890123456 },
+          classItem: { itemHash: 8901234567 }
+        },
+        mods: [
+          { itemHash: 9012345678 },
+          { itemHash: 1023456789 }
+        ],
+        tags: ['shared', buildActivity.toLowerCase()],
+        score: 85
+      }
+
+      submitShareBuild(buildData)
+    }
+
+    return (
+      <div className="modal-overlay">
+        <div className="share-modal">
+          <div className="modal-header">
+            <h3>Share Build with {selectedFriend.displayName}</h3>
+            <button 
+              className="modal-close"
+              onClick={() => setShowShareModal(false)}
+              disabled={shareLoading}
+            >
+              ×
+            </button>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="share-form">
+            <div className="form-group">
+              <label>Build Name *</label>
+              <input
+                type="text"
+                value={buildName}
+                onChange={(e) => setBuildName(e.target.value)}
+                placeholder="Enter build name..."
+                maxLength={50}
+                required
+                disabled={shareLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Description</label>
+              <textarea
+                value={buildDescription}
+                onChange={(e) => setBuildDescription(e.target.value)}
+                placeholder="Describe your build..."
+                maxLength={200}
+                rows={3}
+                disabled={shareLoading}
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Class</label>
+                <select
+                  value={buildClass}
+                  onChange={(e) => setBuildClass(e.target.value)}
+                  disabled={shareLoading}
+                >
+                  <option value="Titan">Titan</option>
+                  <option value="Hunter">Hunter</option>
+                  <option value="Warlock">Warlock</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Activity</label>
+                <select
+                  value={buildActivity}
+                  onChange={(e) => setBuildActivity(e.target.value)}
+                  disabled={shareLoading}
+                >
+                  <option value="General">General</option>
+                  <option value="PvP">PvP</option>
+                  <option value="PvE">PvE</option>
+                  <option value="Raid">Raid</option>
+                  <option value="Dungeon">Dungeon</option>
+                  <option value="Trials">Trials</option>
+                  <option value="Gambit">Gambit</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                onClick={() => setShowShareModal(false)}
+                className="cancel-btn"
+                disabled={shareLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="share-btn"
+                disabled={shareLoading || !buildName.trim()}
+              >
+                {shareLoading ? (
+                  <>
+                    <div className="loading-spinner small"></div>
+                    Sharing...
+                  </>
+                ) : (
+                  <>
+                    📤 Share Build
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+          
+          <div className="share-note">
+            <p><strong>Note:</strong> This is a demo build sharing feature. In the full version, you'll be able to share actual builds from the Build Creator.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  }
+
+  const handleShareBuild = (friend) => {
+    setSelectedFriend(friend)
+    setShowShareModal(true)
+  }
+
+  const submitShareBuild = async (buildData) => {
+    if (!selectedFriend) return
+
+    try {
+      setShareLoading(true)
+      
+      console.log(`Sharing build with ${selectedFriend.displayName}`)
+      
+      const response = await fetch('/api/builds/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          recipientMembershipId: selectedFriend.membershipId,
+          recipientDisplayName: selectedFriend.displayName,
+          buildData
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Failed to share build (${response.status})`)
+      }
+      
+      const data = await response.json()
+      
+      console.log('Build shared successfully:', data)
+      
+      // Close modal and show success
+      setShowShareModal(false)
+      setSelectedFriend(null)
+      
+      // You could add a toast notification here
+      alert(`Build "${buildData.name}" shared with ${selectedFriend.displayName}!`)
+      
+    } catch (error) {
+      console.error('Error sharing build:', error)
+      alert(`Failed to share build: ${error.message}`)
+    } finally {
+      setShareLoading(false)
     }
   }, [session])
 
@@ -133,8 +339,8 @@ export default function FriendSystem() {
       <div className="friend-actions">
         <button 
           className="action-btn share-build"
-          title="Share Build (Coming Soon)"
-          disabled
+          title="Share Build"
+          onClick={() => handleShareBuild(friend)}
         >
           📤 Share
         </button>
@@ -252,6 +458,9 @@ export default function FriendSystem() {
           </span>
         </div>
       )}
+      
+      {/* Share Build Modal */}
+      <ShareBuildModal />
     </div>
   )
 }
