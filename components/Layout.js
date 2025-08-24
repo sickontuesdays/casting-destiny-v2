@@ -29,6 +29,7 @@ export default function Layout({ children }) {
   const navItems = [
     { href: '/', label: 'Build Creator', icon: '🏗️' },
     { href: '/builds', label: 'My Builds', icon: '📋' },
+    { href: '/inventory', label: 'Inventory', icon: '🎒' },
     { href: '/admin', label: 'Admin', icon: '⚙️' }
   ]
 

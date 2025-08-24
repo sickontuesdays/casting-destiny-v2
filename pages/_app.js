@@ -3,6 +3,7 @@ import { AuthProvider } from '../lib/useAuth'
 import Layout from '../components/Layout'
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
+import '../styles/components.css'
 
 // Create AppContext for global state management
 export const AppContext = createContext({
