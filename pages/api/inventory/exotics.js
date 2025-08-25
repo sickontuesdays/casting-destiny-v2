@@ -1,29 +1,5 @@
 // pages/api/inventory/exotics.js
-// API endpoint for fetching available exotic items
-
-import { jwtVerify } from 'jose'
-import BungieAPIService from '../../../lib/bungie-api-service'
-import ManifestManager from '../../../lib/manifest-manager'
-
-const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
-
-async function getSessionFromCookie(req) {
-  try {
-    const sessionCookie = req.cookies['bungie_session']
-    if (!sessionCookie) return null
-
-    const { payload } = await jwtVerify(sessionCookie, secret)
-    
-    if (payload.expiresAt && Date.now() > payload.expiresAt) {
-      return null
-    }
-
-    return payload
-  } catch (error) {
-    console.error('Session verification failed:', error)
-    return null
-  }
-}
+// Get exotic items from Bungie API only - no local fallbacks
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -31,295 +7,178 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get session
-    const session = await getSessionFromCookie(req)
+    const { class: classType, type } = req.query
     
-    if (!session?.user || !session.accessToken) {
-      return res.status(401).json({ error: 'Authentication required' })
-    }
-
-    const { useInventoryOnly = 'true', classType } = req.query
-
-    console.log(`Loading exotic items`, {
-      user: session.user.displayName,
-      useInventoryOnly,
-      classType
+    console.log('Loading exotic items from Bungie API:', {
+      classType,
+      type
     })
 
-    let exotics = []
+    // Get absolute URL for server-side API calls  
+    const baseUrl = req.headers['x-forwarded-host']
+      ? `https://${req.headers['x-forwarded-host']}`
+      : process.env.NEXTAUTH_URL || 'http://localhost:3000'
 
-    if (useInventoryOnly === 'true') {
-      // Get exotics from user inventory
-      exotics = await getUserExotics(session, classType)
-    } else {
-      // Get all game exotics from manifest
-      exotics = await getAllGameExotics(classType)
-    }
-
-    // Separate and sort by type
-    const weapons = exotics.filter(e => e.itemType === 3)
-    const armor = exotics.filter(e => e.itemType === 2)
-
-    // Sort alphabetically within each category
-    weapons.sort((a, b) => a.name.localeCompare(b.name))
-    armor.sort((a, b) => a.name.localeCompare(b.name))
-
-    const response = {
-      success: true,
-      exotics: [...armor, ...weapons], // Armor first, then weapons
-      summary: {
-        total: exotics.length,
-        weapons: weapons.length,
-        armor: armor.length
-      },
-      source: useInventoryOnly === 'true' ? 'inventory' : 'manifest'
-    }
-
-    // Cache for 10 minutes
-    res.setHeader('Cache-Control', 'private, max-age=600')
-    
-    res.status(200).json(response)
-
-  } catch (error) {
-    console.error('Error loading exotic items:', error)
-    
-    res.status(500).json({ 
-      error: 'Failed to load exotic items',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    })
-  }
-}
-
-async function getUserExotics(session, classType) {
-  try {
-    const bungieAPI = new BungieAPIService()
-    
-    // Get user's Destiny memberships
-    const { primaryMembership } = await bungieAPI.getDestinyMemberships(session.accessToken)
-    
-    if (!primaryMembership) {
-      return []
-    }
-
-    // Get complete inventory
-    const inventoryData = await bungieAPI.getCompleteInventory(
-      primaryMembership.membershipType,
-      primaryMembership.membershipId,
-      session.accessToken
-    )
-
-    const exotics = []
-    const processedHashes = new Set()
-    
-    // Helper function to process items
-    const processItem = (item) => {
-      // Only process exotics (tier 6)
-      if (item.tierType !== 6) return
-      
-      // Skip if already processed (avoid duplicates)
-      if (processedHashes.has(item.itemHash)) return
-      
-      // Check class type for armor
-      if (item.itemType === 2 && classType !== undefined) {
-        const requestedClass = parseInt(classType)
-        // Skip if not matching class (3 = any class)
-        if (item.classType !== 3 && item.classType !== requestedClass) {
-          return
-        }
+    // Load manifest from Bungie API
+    const manifestResponse = await fetch(`${baseUrl}/api/bungie/manifest`, {
+      headers: {
+        'X-API-Key': process.env.BUNGIE_API_KEY
       }
-      
-      processedHashes.add(item.itemHash)
-      
-      exotics.push({
-        hash: item.itemHash,
-        name: item.displayProperties?.name || 'Unknown Exotic',
-        icon: item.displayProperties?.icon,
-        itemType: item.itemType,
-        classType: item.classType,
-        description: item.displayProperties?.description || '',
-        bucketHash: item.bucketHash,
-        slot: getSlotName(item.bucketHash),
-        element: item.damageType || 0,
-        intrinsicPerk: item.perks?.[0]?.displayProperties?.name || null
+    })
+
+    if (!manifestResponse.ok) {
+      throw new Error(`Failed to load manifest: ${manifestResponse.status}`)
+    }
+
+    const manifest = await manifestResponse.json()
+    const items = manifest.data?.DestinyInventoryItemDefinition || {}
+
+    if (!items || Object.keys(items).length === 0) {
+      console.warn('No items found in manifest')
+      return res.status(200).json({
+        weapons: [],
+        armor: []
       })
     }
-    
-    // Process character items
-    for (const character of inventoryData.characters || []) {
-      character.equipment?.forEach(processItem)
-      character.inventory?.forEach(processItem)
-    }
-    
-    // Process vault items
-    if (inventoryData.vault) {
-      inventoryData.vault.weapons?.forEach(processItem)
-      inventoryData.vault.armor?.forEach(processItem)
-    }
-    
-    return exotics
-    
-  } catch (error) {
-    console.error('Error loading user exotics:', error)
-    return []
-  }
-}
 
-async function getAllGameExotics(classType) {
-  try {
-    const manifestManager = new ManifestManager()
-    const manifest = await manifestManager.loadManifest()
-    
-    if (!manifest?.data?.DestinyInventoryItemDefinition) {
-      // Try loading from local exotic files as fallback
-      return await loadLocalExotics(classType)
-    }
-    
-    const allItems = Object.values(manifest.data.DestinyInventoryItemDefinition)
-    
-    const exotics = allItems.filter(item => {
-      // Skip redacted items
-      if (item.redacted || item.blacklisted) return false
+    // Filter for exotic items only
+    const exotics = Object.values(items).filter(item => {
+      if (!item || !item.displayProperties?.name) return false
+      if (item.redacted) return false
+      if (item.inventory?.tierType !== 6) return false // 6 = Exotic
+
+      // Filter by item type (armor or weapons)
+      const isArmor = item.itemType === 2
+      const isWeapon = item.itemType === 3
       
-      // Only exotic tier (6)
-      if (item.inventory?.tierType !== 6) return false
-      
-      // Must be weapon or armor
-      if (item.itemType !== 2 && item.itemType !== 3) return false
-      
-      // Check class type for armor
-      if (item.itemType === 2 && classType !== undefined) {
-        const requestedClass = parseInt(classType)
-        if (item.classType !== 3 && item.classType !== requestedClass) {
+      if (type === 'armor' && !isArmor) return false
+      if (type === 'weapons' && !isWeapon) return false
+      if (!isArmor && !isWeapon) return false
+
+      // Filter by class type for armor
+      if (isArmor && classType && classType !== 'any') {
+        const classMapping = {
+          'titan': 0,
+          'hunter': 1, 
+          'warlock': 2
+        }
+        
+        // Class type 3 means "any class can use"
+        if (item.classType !== 3 && item.classType !== classMapping[classType]) {
           return false
         }
       }
-      
-      // Must have display properties
-      if (!item.displayProperties?.name) return false
-      
-      // Skip certain categories (ornaments, etc.)
-      if (item.itemCategoryHashes?.includes(20)) return false // Ornaments
-      
+
       return true
     })
-    
-    return exotics.map(item => ({
-      hash: item.hash,
-      name: item.displayProperties.name,
-      icon: item.displayProperties.icon,
-      itemType: item.itemType,
-      classType: item.classType,
-      description: item.displayProperties.description || '',
-      bucketHash: item.inventory?.bucketTypeHash,
-      slot: getSlotName(item.inventory?.bucketTypeHash),
-      element: item.defaultDamageType || 0,
-      intrinsicPerk: item.perks?.[0]?.displayProperties?.name || null,
-      exoticPerk: getExoticPerkName(item)
-    }))
-    
-  } catch (error) {
-    console.error('Error loading manifest exotics:', error)
-    return loadLocalExotics(classType)
-  }
-}
 
-async function loadLocalExotics(classType) {
-  try {
-    // Load from local exotic files as fallback
-    const fs = require('fs').promises
-    const path = require('path')
-    
-    const exoticArmorPath = path.join(process.cwd(), 'data', 'exotic_armor.json')
-    const exoticWeaponsPath = path.join(process.cwd(), 'data', 'exotic_weapons.json')
-    
-    const exotics = []
-    
-    // Load exotic armor if file exists
-    try {
-      const armorData = await fs.readFile(exoticArmorPath, 'utf8')
-      const armorItems = JSON.parse(armorData)
-      
-      armorItems.forEach(item => {
-        // Filter by class if specified
-        if (classType !== undefined && item.classType !== undefined) {
-          const requestedClass = parseInt(classType)
-          if (item.classType !== 3 && item.classType !== requestedClass) {
-            return
-          }
-        }
-        
-        exotics.push({
-          hash: item.hash,
-          name: item.name,
-          icon: item.icon,
-          itemType: 2, // Armor
-          classType: item.classType || 3,
-          description: item.description || '',
-          slot: 'armor'
-        })
-      })
-    } catch (error) {
-      console.warn('Could not load exotic armor file:', error.message)
+    // Separate into armor and weapons
+    const exoticArmor = exotics.filter(item => item.itemType === 2)
+    const exoticWeapons = exotics.filter(item => item.itemType === 3)
+
+    // Format exotic armor by slot
+    const armorBySlot = {
+      helmet: [],
+      arms: [],
+      chest: [],
+      legs: [],
+      classItem: []
     }
-    
-    // Load exotic weapons if file exists
-    try {
-      const weaponData = await fs.readFile(exoticWeaponsPath, 'utf8')
-      const weaponItems = JSON.parse(weaponData)
-      
-      weaponItems.forEach(item => {
-        exotics.push({
-          hash: item.hash,
-          name: item.name,
-          icon: item.icon,
-          itemType: 3, // Weapon
-          description: item.description || '',
-          slot: 'weapon'
-        })
-      })
-    } catch (error) {
-      console.warn('Could not load exotic weapons file:', error.message)
+
+    const bucketToSlot = {
+      3448274439: 'helmet',
+      3551918588: 'arms',
+      14239492: 'chest',
+      20886954: 'legs',
+      1585787867: 'classItem'
     }
-    
-    return exotics
-    
-  } catch (error) {
-    console.error('Error loading local exotic files:', error)
-    return []
-  }
-}
 
-function getSlotName(bucketHash) {
-  const slotMap = {
-    1498876634: 'kinetic',
-    2465295065: 'energy',
-    953998645: 'power',
-    3448274439: 'helmet',
-    3551918588: 'arms',
-    14239492: 'chest',
-    20886954: 'legs',
-    1585787867: 'class'
-  }
-  
-  return slotMap[bucketHash] || 'unknown'
-}
-
-function getExoticPerkName(item) {
-  // Try to find the exotic perk from item's socket entries
-  if (item.sockets?.socketEntries) {
-    for (const socket of item.sockets.socketEntries) {
-      if (socket.singleInitialItemHash) {
-        // This would need manifest lookup for the perk name
-        return null
+    exoticArmor.forEach(armor => {
+      const slot = bucketToSlot[armor.inventory?.bucketTypeHash]
+      if (slot) {
+        armorBySlot[slot].push({
+          hash: armor.hash,
+          name: armor.displayProperties.name,
+          description: armor.displayProperties.description || '',
+          icon: armor.displayProperties.icon ? `https://www.bungie.net${armor.displayProperties.icon}` : null,
+          classType: armor.classType,
+          classTypeName: armor.classType === 0 ? 'Titan' : armor.classType === 1 ? 'Hunter' : armor.classType === 2 ? 'Warlock' : 'Any',
+          slot: slot,
+          bucketTypeHash: armor.inventory.bucketTypeHash,
+          intrinsicPerk: armor.perks?.[0] || null,
+          stats: armor.investmentStats?.reduce((acc, stat) => {
+            acc[stat.statTypeHash] = stat.value
+            return acc
+          }, {}) || {}
+        })
       }
+    })
+
+    // Format exotic weapons by damage type and slot
+    const weaponsBySlot = {
+      kinetic: [],
+      energy: [],
+      power: []
     }
+
+    const bucketToWeaponSlot = {
+      1498876634: 'kinetic',
+      2465295065: 'energy', 
+      953998645: 'power'
+    }
+
+    exoticWeapons.forEach(weapon => {
+      const slot = bucketToWeaponSlot[weapon.inventory?.bucketTypeHash]
+      if (slot) {
+        weaponsBySlot[slot].push({
+          hash: weapon.hash,
+          name: weapon.displayProperties.name,
+          description: weapon.displayProperties.description || '',
+          icon: weapon.displayProperties.icon ? `https://www.bungie.net${weapon.displayProperties.icon}` : null,
+          slot: slot,
+          bucketTypeHash: weapon.inventory.bucketTypeHash,
+          weaponType: weapon.itemSubType,
+          damageType: weapon.defaultDamageType,
+          damageTypeName: weapon.defaultDamageType === 1 ? 'Kinetic' : weapon.defaultDamageType === 2 ? 'Arc' : weapon.defaultDamageType === 3 ? 'Solar' : weapon.defaultDamageType === 6 ? 'Void' : weapon.defaultDamageType === 4 ? 'Stasis' : weapon.defaultDamageType === 5 ? 'Strand' : 'Unknown',
+          intrinsicPerk: weapon.perks?.[0] || null,
+          stats: weapon.investmentStats?.reduce((acc, stat) => {
+            acc[stat.statTypeHash] = stat.value
+            return acc
+          }, {}) || {}
+        })
+      }
+    })
+
+    const response = {
+      armor: armorBySlot,
+      weapons: weaponsBySlot,
+      totals: {
+        armor: exoticArmor.length,
+        weapons: exoticWeapons.length,
+        total: exotics.length
+      },
+      classFilter: classType || 'all',
+      typeFilter: type || 'all',
+      source: 'bungie-api'
+    }
+
+    console.log(`Found ${response.totals.total} exotic items from Bungie manifest:`, {
+      armor: response.totals.armor,
+      weapons: response.totals.weapons,
+      classFilter: classType,
+      typeFilter: type
+    })
+
+    // Cache for 1 hour
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.status(200).json(response)
+
+  } catch (error) {
+    console.error('Error loading exotics:', error)
+    res.status(500).json({ 
+      error: 'Failed to load exotic items from Bungie API',
+      details: error.message,
+      note: 'This endpoint only uses Bungie API data - no local fallbacks'
+    })
   }
-  
-  // Try from perks array
-  if (item.perks && item.perks.length > 0) {
-    const exoticPerk = item.perks.find(p => p.displayProperties?.name)
-    return exoticPerk?.displayProperties?.name || null
-  }
-  
-  return null
 }
