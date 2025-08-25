@@ -1,7 +1,6 @@
 // pages/api/manifest.js
 // API endpoint for accessing Destiny 2 manifest data
 
-import ManifestManager from '../../lib/manifest-manager'
 import fs from 'fs'
 import path from 'path'
 
@@ -23,18 +22,9 @@ export default async function handler(req, res) {
     if (!cachedManifest || (now - cacheTimestamp) > CACHE_DURATION) {
       console.log('Loading manifest data...')
       
-      try {
-        // Try to load from ManifestManager first
-        const manifestManager = new ManifestManager()
-        cachedManifest = await manifestManager.loadManifest()
-        cacheTimestamp = now
-      } catch (error) {
-        console.warn('Failed to load manifest from API, trying local files:', error.message)
-        
-        // Fallback to local manifest files
-        cachedManifest = await loadLocalManifest()
-        cacheTimestamp = now
-      }
+      // Always load from local files (no GitHub dependency)
+      cachedManifest = await loadLocalManifest()
+      cacheTimestamp = now
     }
 
     // If requesting specific category

@@ -1,5 +1,7 @@
+// pages/api/bungie/inventory.js
+// API endpoint for fetching user inventory from Bungie
+
 import BungieAPIService from '../../../lib/bungie-api-service'
-import ManifestManager from '../../../lib/manifest-manager'
 import { jwtVerify } from 'jose'
 
 const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
@@ -46,12 +48,19 @@ export default async function handler(req, res) {
 
     // Initialize services
     const bungieAPI = new BungieAPIService()
-    const manifestManager = new ManifestManager()
     
     // Load manifest for item definitions
     let manifest = null
     try {
-      manifest = await manifestManager.loadManifest()
+      // Load from local API endpoint - use absolute URL in production
+      const manifestUrl = process.env.NODE_ENV === 'production' 
+        ? `${process.env.NEXTAUTH_URL}/api/manifest`
+        : 'http://localhost:3000/api/manifest'
+        
+      const manifestResponse = await fetch(manifestUrl)
+      if (manifestResponse.ok) {
+        manifest = await manifestResponse.json()
+      }
     } catch (manifestError) {
       console.warn('Failed to load manifest, proceeding without it:', manifestError.message)
     }
@@ -71,7 +80,7 @@ export default async function handler(req, res) {
     )
 
     // Process inventory with manifest data if available
-    const processedInventory = manifest ? 
+    const processedInventory = manifest ?
       await processInventoryWithManifest(inventoryData, manifest) :
       await processInventoryWithoutManifest(inventoryData)
     
@@ -275,9 +284,7 @@ async function processItems(items, manifest, itemComponents) {
   for (const item of items) {
     if (!item) continue
     
-    const itemDef = manifest.getItem ? 
-      manifest.getItem(item.itemHash) : 
-      manifest.data?.DestinyInventoryItemDefinition?.[item.itemHash]
+    const itemDef = manifest?.data?.DestinyInventoryItemDefinition?.[item.itemHash]
     
     if (!itemDef) {
       // Include raw item if no definition found
@@ -337,9 +344,7 @@ async function processItems(items, manifest, itemComponents) {
         
         if (statData.stats) {
           Object.entries(statData.stats).forEach(([statHash, statInfo]) => {
-            const statDef = manifest.getStat ? 
-              manifest.getStat(statHash) : 
-              manifest.data?.DestinyStatDefinition?.[statHash]
+            const statDef = manifest?.data?.DestinyStatDefinition?.[statHash]
             
             processedItem.stats[statHash] = {
               value: statInfo.value,
@@ -356,9 +361,7 @@ async function processItems(items, manifest, itemComponents) {
         
         socketData.sockets?.forEach((socket, index) => {
           if (socket.plugHash) {
-            const plugDef = manifest.getItem ? 
-              manifest.getItem(socket.plugHash) : 
-              manifest.data?.DestinyInventoryItemDefinition?.[socket.plugHash]
+            const plugDef = manifest?.data?.DestinyInventoryItemDefinition?.[socket.plugHash]
             
             if (plugDef) {
               processedItem.sockets.push({
