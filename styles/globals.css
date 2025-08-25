@@ -557,3 +557,385 @@ body {
 .hidden { display: none; }
 .block { display: block; }
 .inline-block { display: inline-block; }
+
+/* styles/globals.css - Updated with BIS imports */
+/* Add these imports at the end of your existing globals.css file */
+
+/* ===============================================
+   Build Intelligence System Styles
+   =============================================== */
+
+/* Import component-specific styles for BIS */
+@import './build-display.css';
+@import './enhanced-creator.css';
+
+/* Additional BIS Global Styles */
+.bis-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* BIS Color Palette Extensions */
+:root {
+  /* Exotic Tier Colors */
+  --exotic-gold: #ceae33;
+  --legendary-purple: #522f65;
+  --rare-blue: #5076a3;
+  --common-gray: #c9c9c9;
+  
+  /* Element Colors */
+  --arc-blue: #79bbe8;
+  --solar-orange: #f0631e;
+  --void-purple: #b185d6;
+  --stasis-blue: #4d88ff;
+  --strand-green: #00c99e;
+  --kinetic-white: #d4d4d4;
+  
+  /* Stat Colors */
+  --mobility: #4fc3f7;
+  --resilience: #f44336;
+  --recovery: #66bb6a;
+  --discipline: #ab47bc;
+  --intellect: #ffee58;
+  --strength: #ff7043;
+}
+
+/* Loading States for BIS */
+.bis-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: #888;
+}
+
+.bis-loading-text {
+  margin-left: 1rem;
+  font-size: 0.95rem;
+}
+
+/* BIS Card Styles */
+.bis-card {
+  background: rgba(20, 20, 20, 0.8);
+  border: 1px solid #333;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.bis-card:hover {
+  border-color: #555;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* BIS Button Variants */
+.bis-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  outline: none;
+}
+
+.bis-btn-primary {
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  color: #fff;
+}
+
+.bis-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.bis-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+  border: 1px solid #666;
+}
+
+.bis-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #888;
+}
+
+.bis-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* BIS Form Elements */
+.bis-input,
+.bis-select,
+.bis-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #444;
+  border-radius: 0.5rem;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.bis-input:focus,
+.bis-select:focus,
+.bis-textarea:focus {
+  outline: none;
+  border-color: #ff6b35;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2);
+}
+
+.bis-textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+}
+
+/* BIS Grid Layouts */
+.bis-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.bis-grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.bis-grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.bis-grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* BIS Stat Bars */
+.bis-stat-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bis-stat-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.bis-stat-bar-tier {
+  position: absolute;
+  width: 1px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  top: 0;
+}
+
+.bis-stat-bar-tier:nth-child(1) { left: 10%; }
+.bis-stat-bar-tier:nth-child(2) { left: 20%; }
+.bis-stat-bar-tier:nth-child(3) { left: 30%; }
+.bis-stat-bar-tier:nth-child(4) { left: 40%; }
+.bis-stat-bar-tier:nth-child(5) { left: 50%; }
+.bis-stat-bar-tier:nth-child(6) { left: 60%; }
+.bis-stat-bar-tier:nth-child(7) { left: 70%; }
+.bis-stat-bar-tier:nth-child(8) { left: 80%; }
+.bis-stat-bar-tier:nth-child(9) { left: 90%; }
+
+/* BIS Item Icons */
+.bis-item-icon {
+  position: relative;
+  display: inline-block;
+}
+
+.bis-item-icon img {
+  border: 2px solid;
+  border-radius: 0.25rem;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.bis-item-icon-exotic {
+  border-color: var(--exotic-gold) !important;
+}
+
+.bis-item-icon-legendary {
+  border-color: var(--legendary-purple) !important;
+}
+
+.bis-item-icon-rare {
+  border-color: var(--rare-blue) !important;
+}
+
+.bis-item-icon-common {
+  border-color: var(--common-gray) !important;
+}
+
+/* BIS Element Icons */
+.bis-element-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.bis-element-arc {
+  background: radial-gradient(circle, var(--arc-blue), transparent);
+  box-shadow: 0 0 10px var(--arc-blue);
+}
+
+.bis-element-solar {
+  background: radial-gradient(circle, var(--solar-orange), transparent);
+  box-shadow: 0 0 10px var(--solar-orange);
+}
+
+.bis-element-void {
+  background: radial-gradient(circle, var(--void-purple), transparent);
+  box-shadow: 0 0 10px var(--void-purple);
+}
+
+.bis-element-stasis {
+  background: radial-gradient(circle, var(--stasis-blue), transparent);
+  box-shadow: 0 0 10px var(--stasis-blue);
+}
+
+.bis-element-strand {
+  background: radial-gradient(circle, var(--strand-green), transparent);
+  box-shadow: 0 0 10px var(--strand-green);
+}
+
+/* BIS Animations */
+@keyframes bis-pulse {
+  0%, 100% { 
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 0.8;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes bis-glow {
+  0%, 100% { 
+    box-shadow: 0 0 5px currentColor;
+  }
+  50% { 
+    box-shadow: 0 0 20px currentColor, 0 0 40px currentColor;
+  }
+}
+
+@keyframes bis-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* BIS Tooltips */
+.bis-tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.bis-tooltip-content {
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid #444;
+  border-radius: 0.25rem;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+}
+
+.bis-tooltip:hover .bis-tooltip-content {
+  opacity: 1;
+}
+
+/* BIS Responsive Utilities */
+@media (max-width: 1200px) {
+  .bis-grid-4 {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .bis-container {
+    padding: 0 0.5rem;
+  }
+  
+  .bis-grid-2,
+  .bis-grid-3,
+  .bis-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .bis-card {
+    padding: 1rem;
+  }
+}
+
+/* BIS Print Styles */
+@media print {
+  .bis-btn,
+  .bis-input,
+  .bis-select,
+  .bis-textarea {
+    border: 1px solid #000 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  
+  .bis-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* BIS Accessibility */
+.bis-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bis-focus-visible:focus {
+  outline: 2px solid #ff6b35;
+  outline-offset: 2px;
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .bis-card {
+    border-width: 2px;
+  }
+  
+  .bis-btn {
+    border: 2px solid currentColor;
+  }
+  
+  .bis-stat-bar {
+    border: 1px solid currentColor;
+  }
+}
