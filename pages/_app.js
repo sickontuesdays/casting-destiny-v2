@@ -4,10 +4,11 @@
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
 import '../styles/components.css'
-import '../styles/build-display.css'
-import '../styles/enhanced-creator.css'
+// Only import these if the files exist
+// import '../styles/build-display.css'
+// import '../styles/enhanced-creator.css'
 import { AuthProvider } from '../lib/useAuth'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react' // Added useState import
 import { useRouter } from 'next/router'
 
 function MyApp({ Component, pageProps }) {
@@ -99,8 +100,10 @@ function BISStatusIndicator() {
       }
     }
     
-    window.addEventListener('bis-status', handleBISEvent)
-    return () => window.removeEventListener('bis-status', handleBISEvent)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('bis-status', handleBISEvent)
+      return () => window.removeEventListener('bis-status', handleBISEvent)
+    }
   }, [])
   
   if (bisStatus === 'idle') return null
@@ -125,6 +128,87 @@ function BISStatusIndicator() {
           <span>Build Generation Failed</span>
         </>
       )}
+      
+      <style jsx>{`
+        .bis-status-indicator {
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          padding: 1rem 1.5rem;
+          background: rgba(20, 20, 20, 0.95);
+          border: 1px solid #444;
+          border-radius: 0.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          z-index: 9999;
+          animation: slideInRight 0.3s ease;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .bis-status-indicator.loading {
+          border-color: #ff6b35;
+          background: rgba(255, 107, 53, 0.1);
+        }
+        
+        .bis-status-indicator.success {
+          border-color: #4caf50;
+          background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .bis-status-indicator.error {
+          border-color: #f44336;
+          background: rgba(244, 67, 54, 0.1);
+        }
+        
+        .bis-status-spinner {
+          width: 20px;
+          height: 20px;
+          border: 2px solid rgba(255, 107, 53, 0.3);
+          border-top-color: #ff6b35;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        
+        .bis-status-icon {
+          font-size: 1.2rem;
+          font-weight: bold;
+        }
+        
+        .bis-status-indicator.success .bis-status-icon {
+          color: #4caf50;
+        }
+        
+        .bis-status-indicator.error .bis-status-icon {
+          color: #f44336;
+        }
+        
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        
+        @media (max-width: 768px) {
+          .bis-status-indicator {
+            bottom: 1rem;
+            right: 1rem;
+            left: 1rem;
+            justify-content: center;
+          }
+        }
+      `}</style>
     </div>
   )
 }
@@ -138,87 +222,3 @@ export function reportWebVitals(metric) {
 }
 
 export default MyApp
-
-// BIS Status Indicator Styles (add to globals.css or here)
-const bisStatusStyles = `
-  <style jsx global>{
-    .bis-status-indicator {
-      position: fixed;
-      bottom: 2rem;
-      right: 2rem;
-      padding: 1rem 1.5rem;
-      background: rgba(20, 20, 20, 0.95);
-      border: 1px solid #444;
-      border-radius: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      z-index: 9999;
-      animation: slideInRight 0.3s ease;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
-    
-    .bis-status-indicator.loading {
-      border-color: #ff6b35;
-      background: rgba(255, 107, 53, 0.1);
-    }
-    
-    .bis-status-indicator.success {
-      border-color: #4caf50;
-      background: rgba(76, 175, 80, 0.1);
-    }
-    
-    .bis-status-indicator.error {
-      border-color: #f44336;
-      background: rgba(244, 67, 54, 0.1);
-    }
-    
-    .bis-status-spinner {
-      width: 20px;
-      height: 20px;
-      border: 2px solid rgba(255, 107, 53, 0.3);
-      border-top-color: #ff6b35;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    
-    .bis-status-icon {
-      font-size: 1.2rem;
-      font-weight: bold;
-    }
-    
-    .bis-status-indicator.success .bis-status-icon {
-      color: #4caf50;
-    }
-    
-    .bis-status-indicator.error .bis-status-icon {
-      color: #f44336;
-    }
-    
-    @keyframes slideInRight {
-      from {
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-    
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-    
-    @media (max-width: 768px) {
-      .bis-status-indicator {
-        bottom: 1rem;
-        right: 1rem;
-        left: 1rem;
-        justify-content: center;
-      }
-    }
-  }</style>
-`
