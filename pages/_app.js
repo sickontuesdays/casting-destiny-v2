@@ -1,40 +1,64 @@
 // pages/_app.js
-// Main app with Build Intelligence System integration
+// Fixed version with AppContext export and BIS integration
 
+import React, { useState, useEffect, createContext } from 'react'
+import { AuthProvider } from '../lib/useAuth'
+import Layout from '../components/Layout'
 import '../styles/globals.css'
 import '../styles/destiny-theme.css'
 import '../styles/components.css'
 // Only import these if the files exist
 // import '../styles/build-display.css'
 // import '../styles/enhanced-creator.css'
-import { AuthProvider } from '../lib/useAuth'
-import { useEffect, useState } from 'react' // Added useState import
-import { useRouter } from 'next/router'
+
+// Create AppContext for global state management - THIS IS WHAT index.js needs
+export const AppContext = createContext({
+  manifest: null,
+  manifestLoading: false,
+  manifestError: null,
+  setManifest: () => {},
+  refreshManifest: () => {}
+})
 
 function MyApp({ Component, pageProps }) {
-  const router = useRouter()
+  const [manifest, setManifest] = useState(null)
+  const [manifestLoading, setManifestLoading] = useState(false)
+  const [manifestError, setManifestError] = useState(null)
 
+  // Refresh manifest from the NEW endpoint
+  const refreshManifest = async () => {
+    try {
+      setManifestLoading(true)
+      setManifestError(null)
+      
+      // Use the NEW manifest endpoint, not the old GitHub one
+      const response = await fetch('/api/manifest')
+      
+      if (response.ok) {
+        const data = await response.json()
+        setManifest(data)
+        console.log('✅ Manifest loaded successfully')
+      } else if (response.status === 404) {
+        console.warn('Manifest endpoint not found')
+        setManifestError('Manifest endpoint not available')
+      } else {
+        console.warn('Manifest not available')
+        setManifestError('Manifest not available')
+      }
+    } catch (error) {
+      console.warn('Failed to load manifest:', error)
+      setManifestError(error.message)
+    } finally {
+      setManifestLoading(false)
+    }
+  }
+
+  // Initialize BIS on app load
   useEffect(() => {
-    // Initialize BIS on app load
     if (typeof window !== 'undefined') {
       initializeBIS()
     }
-
-    // Track page views
-    const handleRouteChange = (url) => {
-      console.log('App navigated to:', url)
-      
-      // Track BIS usage
-      if (url.includes('build-creator')) {
-        trackBISUsage('page_view')
-      }
-    }
-
-    router.events.on('routeChangeComplete', handleRouteChange)
-    return () => {
-      router.events.off('routeChangeComplete', handleRouteChange)
-    }
-  }, [router.events])
+  }, [])
 
   const initializeBIS = async () => {
     try {
@@ -47,7 +71,7 @@ function MyApp({ Component, pageProps }) {
         // Store in session storage for quick access
         if (window.sessionStorage) {
           window.sessionStorage.setItem('bis_manifest_loaded', 'true')
-          window.sessionStorage.setItem('bis_manifest_stats', JSON.stringify(manifestData.stats))
+          window.sessionStorage.setItem('bis_manifest_stats', JSON.stringify(manifestData.stats || {}))
         }
       }
     } catch (error) {
@@ -60,25 +84,24 @@ function MyApp({ Component, pageProps }) {
     }
   }
 
-  const trackBISUsage = (action) => {
-    // Track BIS usage for analytics
-    if (typeof window !== 'undefined' && window.gtag) {
-      window.gtag('event', 'bis_usage', {
-        event_category: 'Build Intelligence System',
-        event_label: action,
-        value: 1
-      })
-    }
+  const contextValue = {
+    manifest,
+    manifestLoading,
+    manifestError,
+    setManifest,
+    refreshManifest
   }
 
   return (
     <AuthProvider>
-      <div className="app-container">
-        <Component {...pageProps} />
+      <AppContext.Provider value={contextValue}>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
         
         {/* Global BIS Status Indicator */}
         <BISStatusIndicator />
-      </div>
+      </AppContext.Provider>
     </AuthProvider>
   )
 }
@@ -211,14 +234,6 @@ function BISStatusIndicator() {
       `}</style>
     </div>
   )
-}
-
-// Add custom error boundary for BIS
-export function reportWebVitals(metric) {
-  // Report BIS-specific metrics
-  if (metric.name.includes('BIS') || metric.label?.includes('build')) {
-    console.log('BIS Performance:', metric)
-  }
 }
 
 export default MyApp
