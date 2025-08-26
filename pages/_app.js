@@ -24,30 +24,26 @@ function MyApp({ Component, pageProps }) {
   const [buildIntelligence, setBuildIntelligence] = useState(null)
   const [intelligenceLoading, setIntelligenceLoading] = useState(false)
 
-  // Refresh manifest from GitHub cache (not Bungie directly)
+  // Load manifest directly from Bungie (bypass GitHub storage)
   const refreshManifest = async () => {
     try {
       setManifestLoading(true)
       setManifestError(null)
       
-      // Load from GitHub cache endpoint (renamed to avoid conflict)
-      const response = await fetch('/api/github/get-manifest')
+      console.log('📡 Loading manifest directly from Bungie...')
+      
+      // Load directly from our filtered Bungie API (smaller response)
+      const response = await fetch('/api/bungie/manifest')
       
       if (response.ok) {
         const data = await response.json()
         setManifest(data)
-        console.log('✅ Manifest loaded from GitHub cache')
-      } else if (response.status === 404) {
-        // Don't retry on 404 - endpoint doesn't exist yet
-        console.warn('Manifest endpoint not found - may need to deploy fixes')
-        setManifestError('Manifest endpoint not deployed yet')
+        console.log(`✅ Manifest loaded successfully: ${data.metadata.itemCount} items`)
       } else {
-        // Don't block app if manifest isn't available
-        console.warn('Manifest not available in GitHub cache')
-        setManifestError('Manifest not cached yet')
+        throw new Error(`Failed to load manifest: ${response.status}`)
       }
     } catch (error) {
-      console.warn('Failed to load manifest:', error)
+      console.error('Failed to load manifest:', error)
       setManifestError(error.message)
     } finally {
       setManifestLoading(false)
@@ -91,22 +87,12 @@ function MyApp({ Component, pageProps }) {
     return !!(buildIntelligence && buildIntelligence.isInitialized && buildIntelligence.isInitialized())
   }
 
-  // Only load manifest after user logs in (handled by components)
+  // Auto-load manifest on app start
   useEffect(() => {
-    // Check if manifest exists in GitHub on app load but don't block
-    const checkManifestAvailability = async () => {
-      try {
-        const response = await fetch('/api/github/manifest/status')
-        if (response.ok) {
-          const status = await response.json()
-          console.log('Manifest status:', status)
-        }
-      } catch (error) {
-        console.log('Manifest not available yet')
-      }
+    if (!manifest && !manifestLoading) {
+      console.log('🚀 Auto-loading manifest on app start...')
+      refreshManifest()
     }
-    
-    checkManifestAvailability()
   }, [])
 
   const contextValue = {
