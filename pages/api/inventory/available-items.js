@@ -1,269 +1,141 @@
+// pages/api/inventory/available-items.js
+// API endpoint for fetching all available items from manifest (not user-specific)
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
-    // Get manifest data from Bungie API only
-    const manifestResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/bungie/manifest`);
-    if (!manifestResponse.ok) {
-      throw new Error('Failed to get manifest data from Bungie API');
-    }
-    const manifestData = await manifestResponse.json();
-
-    // Extract query parameters for filtering
-    const { 
-      search = '', 
-      itemType = '', 
-      classType = '', 
-      slot = '', 
-      tierType = '', 
-      damageType = '',
-      limit = '50' 
-    } = req.query;
-
-    // Helper function to get proper Bungie icon - never use local files
-    const getItemIcon = (item) => {
-      if (item.displayProperties?.icon) {
-        return `https://www.bungie.net${item.displayProperties.icon}`;
-      }
-      // Use empty socket icon from manifest as fallback - never local files
-      return `https://www.bungie.net/common/destiny2_content/icons/baf3919b265395ba482761e6fadb4b3d.png`;
-    };
-
-    // Helper function to get damage type name including Prismatic
-    const getDamageTypeName = (damageTypeHash) => {
-      const damageTypes = {
-        1: 'Kinetic',
-        2: 'Arc', 
-        3: 'Solar',
-        4: 'Void',
-        6: 'Stasis',
-        7: 'Strand',
-        8: 'Prismatic' // Include Prismatic as found in manifest data
-      };
-      return damageTypes[damageTypeHash] || 'Kinetic';
-    };
-
-    // Helper function to get damage type icon from Bungie
-    const getDamageTypeIcon = (damageTypeHash) => {
-      const damageTypeIcons = {
-        1: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_3373582085.png', // Kinetic
-        2: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_2303181850.png', // Arc
-        3: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_3454344768.png', // Solar
-        4: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_3373582085.png', // Void
-        6: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_151347233.png', // Stasis
-        7: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_453755108.png', // Strand
-        8: 'https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_1847025511.png'  // Prismatic
-      };
-      return damageTypeIcons[damageTypeHash] || damageTypeIcons[1]; // Default to Kinetic
-    };
-
-    // Helper function to get weapon type name
-    const getWeaponTypeName = (itemSubType) => {
-      const weaponTypes = {
-        0: 'Unknown',
-        1: 'Auto Rifle',
-        2: 'Shotgun', 
-        3: 'Machine Gun',
-        4: 'Hand Cannon',
-        5: 'Rocket Launcher',
-        6: 'Fusion Rifle',
-        7: 'Sniper Rifle',
-        8: 'Pulse Rifle',
-        9: 'Scout Rifle',
-        10: 'Sidearm',
-        11: 'Sword',
-        12: 'Linear Fusion Rifle',
-        13: 'Grenade Launcher',
-        14: 'Submachine Gun',
-        15: 'Trace Rifle',
-        16: 'Bow',
-        17: 'Glaive'
-      };
-      return weaponTypes[itemSubType] || 'Unknown';
-    };
-
-    // Helper function to get armor type name
-    const getArmorTypeName = (itemSubType) => {
-      const armorTypes = {
-        0: 'Unknown',
-        1: 'Helmet',
-        2: 'Arms', 
-        3: 'Chest',
-        4: 'Legs',
-        5: 'Class Item'
-      };
-      return armorTypes[itemSubType] || 'Unknown';
-    };
-
-    // Helper function to get weapon slot
-    const getWeaponSlot = (bucketTypeHash) => {
-      if (bucketTypeHash === 1498876634) return 'kinetic';
-      if (bucketTypeHash === 2465295065) return 'energy';
-      if (bucketTypeHash === 953998645) return 'power';
-      return 'unknown';
-    };
-
-    // Helper function to get armor slot
-    const getArmorSlot = (bucketTypeHash) => {
-      if (bucketTypeHash === 3448274439) return 'helmet';
-      if (bucketTypeHash === 3551918588) return 'arms';
-      if (bucketTypeHash === 14239492) return 'chest';
-      if (bucketTypeHash === 20886954) return 'legs';
-      if (bucketTypeHash === 1585787867) return 'class';
-      return 'unknown';
-    };
-
-    // Filter items from manifest based on search criteria
-    const filteredItems = [];
-    const searchTerm = search.toLowerCase();
-    const maxResults = parseInt(limit) || 50;
-
-    // Search through DestinyInventoryItemDefinition from Bungie manifest
-    const inventoryItems = manifestData.DestinyInventoryItemDefinition || {};
+    const { useInventoryOnly, itemType, tierType, classType } = req.query
     
-    for (const [itemHash, item] of Object.entries(inventoryItems)) {
-      // Skip items without display properties
-      if (!item.displayProperties?.name) continue;
-      
-      // Skip if item name doesn't match search
-      if (searchTerm && !item.displayProperties.name.toLowerCase().includes(searchTerm)) continue;
-      
-      // Skip non-transferable items unless they're armor/weapons
-      if (item.nonTransferrable && item.itemType !== 2 && item.itemType !== 3) continue;
-      
-      // Filter by item type (2 = Armor, 3 = Weapon)
-      if (itemType) {
-        const requestedType = parseInt(itemType);
-        if (item.itemType !== requestedType) continue;
+    console.log('Loading available items from manifest...')
+    console.log('Query params:', { useInventoryOnly, itemType, tierType, classType })
+    
+    // Load manifest from GitHub cache (same as frontend)
+    let manifest = null
+    try {
+      const manifestResponse = await fetch(`${req.headers.origin || process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/github/get-manifest`)
+      if (manifestResponse.ok) {
+        manifest = await manifestResponse.json()
+        console.log('✅ Loaded manifest from GitHub cache')
+      } else {
+        throw new Error('GitHub manifest not available')
       }
+    } catch (manifestError) {
+      console.log('⚠️ Could not load GitHub manifest:', manifestError.message)
+      return res.status(503).json({
+        error: 'Manifest not available',
+        message: 'Please wait for manifest to load or try again later'
+      })
+    }
+
+    if (!manifest?.data?.DestinyInventoryItemDefinition) {
+      return res.status(503).json({
+        error: 'Manifest data incomplete',
+        message: 'Item definitions not available in manifest'
+      })
+    }
+
+    // Note: useInventoryOnly doesn't apply here since this endpoint returns ALL available items
+    // This endpoint shows what items exist in the game, not what the user owns
+    if (useInventoryOnly === 'true') {
+      console.log('Note: useInventoryOnly=true ignored - this endpoint returns all available items')
+    }
+
+    const itemDefinitions = manifest.data.DestinyInventoryItemDefinition
+    const availableItems = []
+
+    // Filter items based on query parameters
+    for (const itemHash in itemDefinitions) {
+      const item = itemDefinitions[itemHash]
       
-      // Filter by class type (0 = Any, 1 = Warlock, 2 = Hunter, 3 = Titan)
-      if (classType) {
-        const requestedClass = parseInt(classType);
-        if (requestedClass !== 0 && item.classType !== requestedClass && item.classType !== 0) continue;
-      }
+      if (!item || !item.displayProperties?.name) continue
+
+      // Apply filters
+      if (itemType && parseInt(itemType) !== item.itemType) continue
+      if (tierType && parseInt(tierType) !== item.inventory?.tierType) continue  
+      if (classType && parseInt(classType) !== item.classType) continue
+
+      // Only include weapons and armor by default (unless itemType specified)
+      if (!itemType && ![2, 3].includes(item.itemType)) continue
       
-      // Filter by tier type (3 = Rare, 4 = Legendary, 6 = Exotic)
-      if (tierType) {
-        const requestedTier = parseInt(tierType);
-        if (item.inventory?.tierType !== requestedTier) continue;
-      }
-      
-      // Filter by damage type for weapons
-      if (damageType && item.itemType === 3) {
-        const requestedDamage = parseInt(damageType);
-        if (item.defaultDamageType !== requestedDamage) continue;
-      }
-      
-      // Filter by slot
-      if (slot) {
-        const bucketHash = item.inventory?.bucketTypeHash;
-        let itemSlot = 'unknown';
-        
-        if (item.itemType === 3) { // Weapon
-          itemSlot = getWeaponSlot(bucketHash);
-        } else if (item.itemType === 2) { // Armor
-          itemSlot = getArmorSlot(bucketHash);
-        }
-        
-        if (itemSlot !== slot) continue;
+      // Only include legendary and exotic items by default (unless tierType specified)
+      if (!tierType && ![5, 6].includes(item.inventory?.tierType)) continue
+
+      // Get element/damage type
+      let element = 'Unknown'
+      if (item.itemType === 3) { // Weapon
+        const damageTypeDef = manifest.data.DestinyDamageTypeDefinition?.[item.defaultDamageType]
+        element = damageTypeDef?.displayProperties?.name || 'Kinetic'
+      } else if (item.itemType === 2) { // Armor
+        element = 'Any Element' // Armor elements are determined by equipped mods
       }
 
-      // Format item data using only Bungie resources
-      const formattedItem = {
+      const processedItem = {
         itemHash: parseInt(itemHash),
         name: item.displayProperties.name,
         description: item.displayProperties.description || '',
-        icon: getItemIcon(item), // Always Bungie icon, never local
+        icon: `https://www.bungie.net${item.displayProperties.icon}`,
+        screenshot: item.screenshot ? `https://www.bungie.net${item.screenshot}` : null,
         itemType: item.itemType,
         itemSubType: item.itemSubType,
         classType: item.classType,
         tierType: item.inventory?.tierType || 0,
-        bucketTypeHash: item.inventory?.bucketTypeHash
-      };
-
-      // Add weapon-specific data
-      if (item.itemType === 3) { // Weapon
-        const damageTypeName = getDamageTypeName(item.defaultDamageType);
-        formattedItem.weaponType = getWeaponTypeName(item.itemSubType);
-        formattedItem.damageType = item.defaultDamageType;
-        formattedItem.damageTypeName = damageTypeName;
-        formattedItem.damageTypeIcon = getDamageTypeIcon(item.defaultDamageType);
-        formattedItem.slot = getWeaponSlot(item.inventory?.bucketTypeHash);
-        formattedItem.ammoType = item.equippingBlock?.ammoType;
-        
-        // Get weapon stats from manifest
-        if (item.stats?.stats) {
-          formattedItem.stats = Object.entries(item.stats.stats).map(([statHash, stat]) => ({
-            hash: parseInt(statHash),
-            name: manifestData.DestinyStatDefinition?.[statHash]?.displayProperties?.name || 'Unknown Stat',
-            value: stat.value
-          }));
-        }
+        element: element,
+        bucketHash: item.inventory?.bucketTypeHash,
+        stackUniqueLabel: item.inventory?.stackUniqueLabel,
+        isExotic: item.inventory?.tierType === 6,
+        isLegendary: item.inventory?.tierType === 5,
+        category: item.itemType === 3 ? 'weapon' : item.itemType === 2 ? 'armor' : 'other'
       }
 
-      // Add armor-specific data
-      if (item.itemType === 2) { // Armor
-        formattedItem.armorType = getArmorTypeName(item.itemSubType);
-        formattedItem.slot = getArmorSlot(item.inventory?.bucketTypeHash);
-        
-        // Get armor stats from manifest
-        if (item.stats?.stats) {
-          formattedItem.stats = Object.entries(item.stats.stats).map(([statHash, stat]) => ({
-            hash: parseInt(statHash),
-            name: manifestData.DestinyStatDefinition?.[statHash]?.displayProperties?.name || 'Unknown Stat',
-            value: stat.value
-          }));
-        }
-      }
-
-      filteredItems.push(formattedItem);
-      
-      // Limit results to prevent huge responses
-      if (filteredItems.length >= maxResults) break;
+      availableItems.push(processedItem)
     }
 
-    // Sort items by tier (Exotic first) then by name
-    filteredItems.sort((a, b) => {
-      const tierDiff = (b.tierType || 0) - (a.tierType || 0);
-      if (tierDiff !== 0) return tierDiff;
-      return a.name.localeCompare(b.name);
-    });
-
-    // Group items by category for easier consumption
-    const weapons = filteredItems.filter(item => item.itemType === 3);
-    const armor = filteredItems.filter(item => item.itemType === 2);
-    const other = filteredItems.filter(item => item.itemType !== 2 && item.itemType !== 3);
-
-    const response = {
-      success: true,
-      data: {
-        items: filteredItems,
-        weapons,
-        armor,
-        other,
-        total: filteredItems.length,
-        searchTerm: search,
-        filters: {
-          itemType: itemType || 'all',
-          classType: classType || 'all',
-          slot: slot || 'all',
-          tierType: tierType || 'all',
-          damageType: damageType || 'all'
-        }
+    // Sort items by tier (exotic first) then by name
+    availableItems.sort((a, b) => {
+      if (a.tierType !== b.tierType) {
+        return b.tierType - a.tierType // Higher tier first (exotic=6, legendary=5)
       }
-    };
+      return a.name.localeCompare(b.name)
+    })
 
-    res.status(200).json(response);
+    const result = {
+      items: availableItems,
+      total: availableItems.length,
+      filters: {
+        itemType: itemType ? parseInt(itemType) : null,
+        tierType: tierType ? parseInt(tierType) : null,
+        classType: classType ? parseInt(classType) : null,
+        useInventoryOnly: useInventoryOnly === 'true' ? 'ignored' : false
+      },
+      categories: {
+        weapons: availableItems.filter(item => item.itemType === 3).length,
+        armor: availableItems.filter(item => item.itemType === 2).length,
+        exotics: availableItems.filter(item => item.isExotic).length,
+        legendaries: availableItems.filter(item => item.isLegendary).length
+      },
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        source: 'github-cached-manifest',
+        manifestVersion: manifest.version
+      }
+    }
+
+    console.log(`✅ Found ${availableItems.length} available items`)
+
+    // Cache for 1 hour since available items don't change frequently
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    
+    res.status(200).json(result)
 
   } catch (error) {
-    console.error('Error fetching available items:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message,
-      data: { items: [], weapons: [], armor: [], other: [], total: 0 }
-    });
+    console.error('Error fetching available items:', error)
+    
+    res.status(500).json({
+      error: 'Failed to fetch available items',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
   }
 }

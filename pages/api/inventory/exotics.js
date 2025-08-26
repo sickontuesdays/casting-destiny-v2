@@ -1,325 +1,270 @@
+// pages/api/inventory/exotics.js
+// API endpoint for fetching exotic items (both owned and available)
+
+import { requireAuthentication } from '../../../lib/session-utils'
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
-    // Get access token
-    const tokenResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/bungie/token`, {
+    // Get authentication data using the proper session system
+    const { session, accessToken, user } = await requireAuthentication(req)
+    
+    console.log(`Loading exotic items for user: ${user.displayName}`)
+
+    // Get primary Destiny membership
+    const destinyMemberships = user.destinyMemberships || []
+    const primaryMembershipId = user.primaryMembershipId
+    
+    let primaryMembership = destinyMemberships.find(m => m.membershipId === primaryMembershipId)
+    if (!primaryMembership && destinyMemberships.length > 0) {
+      primaryMembership = destinyMemberships[0]
+    }
+    
+    if (!primaryMembership) {
+      return res.status(404).json({ error: 'No Destiny account found' })
+    }
+
+    // Get user's complete inventory from Bungie API
+    const inventoryUrl = `https://www.bungie.net/Platform/Destiny2/${primaryMembership.membershipType}/Profile/${primaryMembership.membershipId}/?components=102,201,205,300,302,304,305,307,308,310`
+    
+    const inventoryResponse = await fetch(inventoryUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'X-API-Key': process.env.BUNGIE_API_KEY
+      }
+    })
+
+    if (!inventoryResponse.ok) {
+      throw new Error(`Failed to fetch inventory: ${inventoryResponse.status}`)
+    }
+
+    const inventoryData = await inventoryResponse.json()
+    
+    if (inventoryData.ErrorCode !== 1) {
+      throw new Error(`Bungie API Error: ${inventoryData.Message}`)
+    }
+
+    // Get manifest from Bungie API for item definitions
+    const manifestUrl = 'https://www.bungie.net/Platform/Destiny2/Manifest/'
+    const manifestResponse = await fetch(manifestUrl, {
       headers: {
         'X-API-Key': process.env.BUNGIE_API_KEY
       }
-    });
+    })
 
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to get access token');
+    const manifestMeta = await manifestResponse.json()
+    if (manifestMeta.ErrorCode !== 1) {
+      throw new Error(`Failed to get manifest metadata: ${manifestMeta.Message}`)
     }
 
-    const { access_token } = await tokenResponse.json();
+    // Download the JSON manifest data
+    const jsonPath = manifestMeta.Response.jsonWorldContentPaths.en
+    const fullManifestUrl = `https://www.bungie.net${jsonPath}`
+    
+    const fullManifestResponse = await fetch(fullManifestUrl)
+    const manifest = await fullManifestResponse.json()
 
-    // Get membership data first
-    const membershipResponse = await fetch(`https://www.bungie.net/Platform/User/GetMembershipsForCurrentUser/`, {
-      headers: {
-        'Authorization': `Bearer ${access_token}`,
-        'X-API-Key': process.env.BUNGIE_API_KEY
+    // Extract exotic items from inventory
+    const profile = inventoryData.Response
+    const allItems = []
+    
+    // Collect items from all characters and vault
+    if (profile.characterEquipment?.data) {
+      for (const characterId in profile.characterEquipment.data) {
+        const equipment = profile.characterEquipment.data[characterId].items || []
+        allItems.push(...equipment)
       }
-    });
-
-    if (!membershipResponse.ok) {
-      throw new Error('Failed to get membership data');
+    }
+    
+    if (profile.characterInventories?.data) {
+      for (const characterId in profile.characterInventories.data) {
+        const inventory = profile.characterInventories.data[characterId].items || []
+        allItems.push(...inventory)
+      }
+    }
+    
+    if (profile.profileInventory?.data?.items) {
+      allItems.push(...profile.profileInventory.data.items)
     }
 
-    const membershipData = await membershipResponse.json();
-    const destinyMembership = membershipData.Response.destinyMemberships[0];
-
-    if (!destinyMembership) {
-      throw new Error('No Destiny membership found');
-    }
-
-    // Get character profiles
-    const profileResponse = await fetch(
-      `https://www.bungie.net/Platform/Destiny2/${destinyMembership.membershipType}/Profile/${destinyMembership.membershipId}/?components=100,102,103,201,205,300,302,304,305,306,307,308,309,310`,
-      {
-        headers: {
-          'Authorization': `Bearer ${access_token}`,
-          'X-API-Key': process.env.BUNGIE_API_KEY
+    // Filter for exotic items and get their definitions
+    const exoticItems = []
+    const itemInstances = profile.itemComponents?.instances?.data || {}
+    const itemStats = profile.itemComponents?.stats?.data || {}
+    const itemSockets = profile.itemComponents?.sockets?.data || {}
+    
+    for (const item of allItems) {
+      const itemDef = manifest.DestinyInventoryItemDefinition[item.itemHash]
+      
+      if (!itemDef) continue
+      
+      // Check if item is exotic (tierType 6)
+      const isExotic = itemDef.inventory?.tierType === 6
+      
+      // Check if it's a weapon or armor piece
+      const isWeaponOrArmor = itemDef.itemType === 3 || itemDef.itemType === 2
+      
+      if (isExotic && isWeaponOrArmor) {
+        // Get item instance data
+        const instance = itemInstances[item.itemInstanceId] || {}
+        const stats = itemStats[item.itemInstanceId]?.stats || {}
+        const sockets = itemSockets[item.itemInstanceId]?.sockets || []
+        
+        // Get damage type for weapons
+        let damageType = null
+        if (itemDef.itemType === 3 && instance.damageType) {
+          const damageTypeDef = manifest.DestinyDamageTypeDefinition[instance.damageType]
+          damageType = damageTypeDef?.displayProperties?.name || 'Kinetic'
         }
-      }
-    );
-
-    if (!profileResponse.ok) {
-      throw new Error('Failed to get profile data');
-    }
-
-    const profileData = await profileResponse.json();
-
-    // Get manifest data
-    const manifestResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/bungie/manifest`);
-    if (!manifestResponse.ok) {
-      throw new Error('Failed to get manifest data');
-    }
-    const manifestData = await manifestResponse.json();
-
-    // Extract exotic items from all characters and vault
-    const exoticItems = [];
-
-    // Process character inventories
-    if (profileData.Response.characterInventories?.data) {
-      Object.entries(profileData.Response.characterInventories.data).forEach(([characterId, inventory]) => {
-        if (inventory.items) {
-          inventory.items.forEach(item => {
-            const itemDefinition = manifestData.DestinyInventoryItemDefinition[item.itemHash];
-            if (itemDefinition && itemDefinition.inventory?.tierType === 6) {
-              exoticItems.push({
-                ...item,
-                location: 'character',
-                characterId,
-                definition: itemDefinition
-              });
+        
+        // Get element for armor
+        let element = null
+        if (itemDef.itemType === 2) {
+          // Check sockets for element
+          for (const socket of sockets) {
+            if (socket.plugHash) {
+              const plugDef = manifest.DestinyInventoryItemDefinition[socket.plugHash]
+              if (plugDef?.plug?.energyCost?.energyType) {
+                const energyTypeDef = manifest.DestinyEnergyTypeDefinition[plugDef.plug.energyCost.energyType]
+                element = energyTypeDef?.displayProperties?.name
+                break
+              }
             }
-          });
-        }
-      });
-    }
-
-    // Process character equipment
-    if (profileData.Response.characterEquipment?.data) {
-      Object.entries(profileData.Response.characterEquipment.data).forEach(([characterId, equipment]) => {
-        if (equipment.items) {
-          equipment.items.forEach(item => {
-            const itemDefinition = manifestData.DestinyInventoryItemDefinition[item.itemHash];
-            if (itemDefinition && itemDefinition.inventory?.tierType === 6) {
-              exoticItems.push({
-                ...item,
-                location: 'equipped',
-                characterId,
-                definition: itemDefinition
-              });
+          }
+          
+          // Fallback to checking inventory bucket for armor type
+          if (!element) {
+            const bucketHash = itemDef.inventory?.bucketTypeHash
+            
+            // Armor bucket hashes and their typical elements
+            const armorBuckets = {
+              3448274439: 'Helmet',
+              14239492: 'Gauntlets', 
+              20886954: 'Chest Armor',
+              1585787867: 'Leg Armor',
+              4023194814: 'Class Item'
             }
-          });
+            
+            // Default elements for new armor system
+            element = 'Solar' // Default, will be updated by actual socket data
+          }
         }
-      });
+        
+        const processedItem = {
+          itemHash: item.itemHash,
+          itemInstanceId: item.itemInstanceId,
+          quantity: item.quantity,
+          name: itemDef.displayProperties?.name || 'Unknown Item',
+          description: itemDef.displayProperties?.description || '',
+          icon: `https://www.bungie.net${itemDef.displayProperties?.icon || '/common/destiny2_content/icons/default.jpg'}`,
+          screenshot: itemDef.screenshot ? `https://www.bungie.net${itemDef.screenshot}` : null,
+          itemType: itemDef.itemType,
+          itemSubType: itemDef.itemSubType,
+          classType: itemDef.classType,
+          tierType: itemDef.inventory?.tierType || 0,
+          element: damageType || element || 'Unknown',
+          powerLevel: instance.primaryStat?.value || 0,
+          masterwork: instance.primaryStat?.value >= 1350, // Rough indicator
+          stats: Object.keys(stats).map(statHash => ({
+            statHash: parseInt(statHash),
+            value: stats[statHash]?.value || 0,
+            name: manifest.DestinyStatDefinition[statHash]?.displayProperties?.name || 'Unknown Stat'
+          })),
+          sockets: sockets.map(socket => ({
+            plugHash: socket.plugHash,
+            isEnabled: socket.isEnabled,
+            isVisible: socket.isVisible,
+            plugItem: socket.plugHash ? manifest.DestinyInventoryItemDefinition[socket.plugHash] : null
+          })),
+          bucketHash: itemDef.inventory?.bucketTypeHash,
+          location: item.location || 'Unknown'
+        }
+        
+        exoticItems.push(processedItem)
+      }
+    }
+    
+    // Also get list of all available exotic items from manifest (for items user doesn't own)
+    const allExoticDefinitions = []
+    
+    for (const itemHash in manifest.DestinyInventoryItemDefinition) {
+      const itemDef = manifest.DestinyInventoryItemDefinition[itemHash]
+      
+      // Check if exotic weapon or armor
+      const isExotic = itemDef.inventory?.tierType === 6
+      const isWeaponOrArmor = itemDef.itemType === 3 || itemDef.itemType === 2
+      const isCollectible = itemDef.collectibleHash // Has a collectible entry
+      
+      if (isExotic && isWeaponOrArmor && isCollectible) {
+        // Determine element/damage type
+        let element = 'Unknown'
+        
+        if (itemDef.itemType === 3) { // Weapon
+          const damageTypeDef = manifest.DestinyDamageTypeDefinition[itemDef.defaultDamageType]
+          element = damageTypeDef?.displayProperties?.name || 'Kinetic'
+        } else if (itemDef.itemType === 2) { // Armor
+          // For armor, element is determined by sockets when equipped
+          // For available items list, we can show as 'Any Element'
+          element = 'Any Element'
+        }
+        
+        allExoticDefinitions.push({
+          itemHash: parseInt(itemHash),
+          name: itemDef.displayProperties?.name || 'Unknown Item',
+          description: itemDef.displayProperties?.description || '',
+          icon: `https://www.bungie.net${itemDef.displayProperties?.icon || '/common/destiny2_content/icons/default.jpg'}`,
+          screenshot: itemDef.screenshot ? `https://www.bungie.net${itemDef.screenshot}` : null,
+          itemType: itemDef.itemType,
+          itemSubType: itemDef.itemSubType,
+          classType: itemDef.classType,
+          tierType: itemDef.inventory?.tierType || 0,
+          element: element,
+          bucketHash: itemDef.inventory?.bucketTypeHash,
+          owned: allItems.some(userItem => userItem.itemHash === parseInt(itemHash))
+        })
+      }
     }
 
-    // Process vault
-    if (profileData.Response.profileInventory?.data?.items) {
-      profileData.Response.profileInventory.data.items.forEach(item => {
-        const itemDefinition = manifestData.DestinyInventoryItemDefinition[item.itemHash];
-        if (itemDefinition && itemDefinition.inventory?.tierType === 6) {
-          exoticItems.push({
-            ...item,
-            location: 'vault',
-            definition: itemDefinition
-          });
-        }
-      });
+    // Separate owned vs available exotics
+    const ownedExotics = exoticItems
+    const availableExotics = allExoticDefinitions.filter(item => !item.owned)
+
+    const result = {
+      owned: ownedExotics,
+      available: availableExotics,
+      total: {
+        owned: ownedExotics.length,
+        available: availableExotics.length,
+        totalExotics: allExoticDefinitions.length
+      },
+      user: {
+        displayName: user.displayName,
+        membershipType: primaryMembership.membershipType,
+        membershipId: primaryMembership.membershipId
+      },
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        source: 'bungie-api-live'
+      }
     }
 
-    // Helper function to get proper Bungie icon
-    const getItemIcon = (item) => {
-      if (item.definition?.displayProperties?.icon) {
-        return `https://www.bungie.net${item.definition.displayProperties.icon}`;
-      }
-      return `https://www.bungie.net/common/destiny2_content/icons/baf3919b265395ba482761e6fadb4b3d.png`; // Default empty socket icon from manifest
-    };
+    console.log(`✅ Found ${ownedExotics.length} owned exotics, ${availableExotics.length} available`)
 
-    // Helper function to get element icon by name
-    const getElementIcon = (elementName) => {
-      const elementIcons = {
-        'Solar': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_3454344768.png`,
-        'Arc': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_2303181850.png`, 
-        'Void': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_3373582085.png`,
-        'Stasis': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_151347233.png`,
-        'Strand': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_453755108.png`,
-        'Prismatic': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_1847025511.png`,
-        'Kinetic': `https://www.bungie.net/common/destiny2_content/icons/DestinyDamageTypeDefinition_3373582085.png`
-      };
-      return elementIcons[elementName] || elementIcons['Kinetic'];
-    };
-
-    // Helper function to get damage type name
-    const getDamageTypeName = (damageTypeHash) => {
-      const damageTypes = {
-        1: 'Kinetic',
-        2: 'Arc', 
-        3: 'Solar',
-        4: 'Void',
-        6: 'Stasis',
-        7: 'Strand',
-        8: 'Prismatic'
-      };
-      return damageTypes[damageTypeHash] || 'Kinetic';
-    };
-
-    // Helper function to get weapon type name
-    const getWeaponTypeName = (itemSubType) => {
-      const weaponTypes = {
-        0: 'Unknown',
-        1: 'Auto Rifle',
-        2: 'Shotgun', 
-        3: 'Machine Gun',
-        4: 'Hand Cannon',
-        5: 'Rocket Launcher',
-        6: 'Fusion Rifle',
-        7: 'Sniper Rifle',
-        8: 'Pulse Rifle',
-        9: 'Scout Rifle',
-        10: 'Sidearm',
-        11: 'Sword',
-        12: 'Linear Fusion Rifle',
-        13: 'Grenade Launcher',
-        14: 'Submachine Gun',
-        15: 'Trace Rifle',
-        16: 'Bow',
-        17: 'Glaive'
-      };
-      return weaponTypes[itemSubType] || 'Unknown';
-    };
-
-    // Helper function to get armor type name
-    const getArmorTypeName = (itemSubType) => {
-      const armorTypes = {
-        0: 'Unknown',
-        1: 'Helmet',
-        2: 'Arms', 
-        3: 'Chest',
-        4: 'Legs',
-        5: 'Class Item'
-      };
-      return armorTypes[itemSubType] || 'Unknown';
-    };
-
-    // Format exotic items for response
-    const formattedExotics = exoticItems.map(item => {
-      const definition = item.definition;
-      const isWeapon = definition.itemType === 3; // DestinyItemType.Weapon
-      const isArmor = definition.itemType === 2;   // DestinyItemType.Armor
-
-      let formattedItem = {
-        itemHash: item.itemHash,
-        itemInstanceId: item.itemInstanceId,
-        quantity: item.quantity || 1,
-        location: item.location,
-        characterId: item.characterId,
-        name: definition.displayProperties?.name || 'Unknown Exotic',
-        description: definition.displayProperties?.description || '',
-        icon: getItemIcon(item),
-        tierType: definition.inventory?.tierType || 6,
-        itemType: definition.itemType,
-        itemSubType: definition.itemSubType,
-        classType: definition.classType,
-        bucketTypeHash: definition.inventory?.bucketTypeHash
-      };
-
-      if (isWeapon) {
-        const damageTypeName = getDamageTypeName(definition.defaultDamageType);
-        formattedItem = {
-          ...formattedItem,
-          type: 'weapon',
-          weaponType: getWeaponTypeName(definition.itemSubType),
-          damageType: definition.defaultDamageType,
-          damageTypeName: damageTypeName,
-          damageTypeIcon: getElementIcon(damageTypeName),
-          ammoType: definition.equippingBlock?.ammoType,
-          intrinsicHash: definition.sockets?.socketEntries?.[0]?.singleInitialItemHash,
-          // Get weapon stats
-          stats: definition.stats?.stats ? Object.entries(definition.stats.stats).map(([statHash, stat]) => ({
-            hash: parseInt(statHash),
-            name: manifestData.DestinyStatDefinition?.[statHash]?.displayProperties?.name || 'Unknown Stat',
-            value: stat.value
-          })) : []
-        };
-
-        // Add weapon slot information
-        const bucketHash = definition.inventory?.bucketTypeHash;
-        if (bucketHash === 1498876634) {
-          formattedItem.slot = 'kinetic';
-          formattedItem.slotName = 'Kinetic';
-        } else if (bucketHash === 2465295065) {
-          formattedItem.slot = 'energy'; 
-          formattedItem.slotName = 'Energy';
-        } else if (bucketHash === 953998645) {
-          formattedItem.slot = 'power';
-          formattedItem.slotName = 'Power';
-        }
-
-      } else if (isArmor) {
-        formattedItem = {
-          ...formattedItem,
-          type: 'armor',
-          armorType: getArmorTypeName(definition.itemSubType),
-          // Get armor stats  
-          stats: definition.stats?.stats ? Object.entries(definition.stats.stats).map(([statHash, stat]) => ({
-            hash: parseInt(statHash),
-            name: manifestData.DestinyStatDefinition?.[statHash]?.displayProperties?.name || 'Unknown Stat',
-            value: stat.value
-          })) : []
-        };
-
-        // Add armor slot information
-        const bucketHash = definition.inventory?.bucketTypeHash;
-        if (bucketHash === 3448274439) {
-          formattedItem.slot = 'helmet';
-          formattedItem.slotName = 'Helmet';
-        } else if (bucketHash === 3551918588) {
-          formattedItem.slot = 'arms';
-          formattedItem.slotName = 'Arms';
-        } else if (bucketHash === 14239492) {
-          formattedItem.slot = 'chest';
-          formattedItem.slotName = 'Chest';
-        } else if (bucketHash === 20886954) {
-          formattedItem.slot = 'legs';
-          formattedItem.slotName = 'Legs';
-        } else if (bucketHash === 1585787867) {
-          formattedItem.slot = 'class';
-          formattedItem.slotName = 'Class Item';
-        }
-      }
-
-      return formattedItem;
-    });
-
-    // Group exotics by type
-    const weapons = formattedExotics.filter(item => item.type === 'weapon');
-    const armor = formattedExotics.filter(item => item.type === 'armor');
-
-    // Sort weapons by slot and name
-    weapons.sort((a, b) => {
-      const slotOrder = { 'kinetic': 1, 'energy': 2, 'power': 3 };
-      const slotDiff = (slotOrder[a.slot] || 999) - (slotOrder[b.slot] || 999);
-      if (slotDiff !== 0) return slotDiff;
-      return a.name.localeCompare(b.name);
-    });
-
-    // Sort armor by slot and name  
-    armor.sort((a, b) => {
-      const slotOrder = { 'helmet': 1, 'arms': 2, 'chest': 3, 'legs': 4, 'class': 5 };
-      const slotDiff = (slotOrder[a.slot] || 999) - (slotOrder[b.slot] || 999);
-      if (slotDiff !== 0) return slotDiff;
-      return a.name.localeCompare(b.name);
-    });
-
-    const response = {
-      success: true,
-      data: {
-        weapons,
-        armor,
-        total: formattedExotics.length,
-        counts: {
-          weapons: weapons.length,
-          armor: armor.length
-        }
-      }
-    };
-
-    res.status(200).json(response);
+    // Cache for 5 minutes since exotic inventory doesn't change frequently
+    res.setHeader('Cache-Control', 'private, max-age=300')
+    
+    res.status(200).json(result)
 
   } catch (error) {
-    console.error('Error fetching exotic items:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message,
-      data: { weapons: [], armor: [], total: 0, counts: { weapons: 0, armor: 0 } }
-    });
+    console.error('Error fetching exotic items:', error)
+    
+    // Return detailed error in development
+    res.status(500).json({
+      error: 'Failed to fetch exotic items',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
   }
 }
