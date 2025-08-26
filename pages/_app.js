@@ -1,7 +1,7 @@
 import '../styles/globals.css'
 import { useState, useEffect, createContext } from 'react'
 import Layout from '../components/Layout'
-import AuthProvider from '../components/AuthProvider'
+import { AuthProvider } from '../lib/useAuth'
 import { BuildIntelligence } from '../lib/destiny-intelligence/build-intelligence'
 
 // Create context for sharing data between components
