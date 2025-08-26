@@ -3,6 +3,7 @@ import { useState, useEffect, createContext } from 'react'
 import Layout from '../components/Layout'
 import { AuthProvider } from '../lib/useAuth'
 import { BuildIntelligence } from '../lib/destiny-intelligence/build-intelligence'
+import { getClientManifestLoader } from '../lib/client-manifest-loader'
 
 // Create context for sharing data between components
 export const AppContext = createContext({})
@@ -33,19 +34,33 @@ function MyApp({ Component, pageProps }) {
       
       console.log('Loading manifest from GitHub cache...')
       
-      // Load from GitHub cache endpoint first
-      const response = await fetch('/api/github/get-manifest')
-      
-      if (!response.ok) {
-        throw new Error('Manifest not found in GitHub cache')
+      // Try GitHub cache first
+      let manifestData = null
+      try {
+        const response = await fetch('/api/github/get-manifest')
+        if (response.ok) {
+          manifestData = await response.json()
+          console.log('✅ Manifest loaded successfully from GitHub cache')
+        } else {
+          console.log('GitHub cache not available, loading directly from Bungie...')
+        }
+      } catch (githubError) {
+        console.log('GitHub cache failed, loading directly from Bungie...')
       }
       
-      const manifestData = await response.json()
-      
-      console.log('✅ Manifest loaded successfully from GitHub cache')
-      console.log(`Version: ${manifestData.version}, Items: ${manifestData.metadata?.itemCount || 'unknown'}`)
+      // If GitHub cache failed, load directly from Bungie in browser (bypassing Vercel)
+      if (!manifestData) {
+        console.log('🌐 Loading manifest directly from Bungie in browser...')
+        
+        const clientLoader = getClientManifestLoader()
+        await clientLoader.initialize()
+        manifestData = await clientLoader.loadManifest()
+        
+        console.log('✅ Manifest loaded directly from Bungie, bypassing Vercel entirely')
+      }
       
       setManifest(manifestData)
+      console.log(`Version: ${manifestData.version}, Items: ${manifestData.metadata?.itemCount || 'unknown'}`)
       
     } catch (error) {
       console.error('Failed to load manifest:', error)
