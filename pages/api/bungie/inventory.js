@@ -1,114 +1,73 @@
 // pages/api/bungie/inventory.js
-// API endpoint for fetching user inventory from Bungie
+// Fixed - eliminates 4MB manifest loading that causes Vercel limit errors
 
-import BungieAPIService from '../../../lib/bungie-api-service'
-import { jwtVerify } from 'jose'
-
-const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET)
-
-async function getSessionFromCookie(req) {
-  try {
-    // Use the correct cookie name (bungie_session with underscore)
-    const sessionCookie = req.cookies['bungie_session']
-    if (!sessionCookie) return null
-
-    const { payload } = await jwtVerify(sessionCookie, secret)
-    
-    // Check if token is expired
-    if (payload.expiresAt && Date.now() > payload.expiresAt) {
-      return null
-    }
-
-    return payload
-  } catch (error) {
-    console.error('Session verification failed:', error)
-    return null
-  }
-}
+import { getSessionFromRequest } from '../../../lib/session-utils'
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET' && req.method !== 'POST') {
+  if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
-    // Get session from cookie
-    const session = await getSessionFromCookie(req)
+    // Get session using our session utility
+    const session = await getSessionFromRequest(req)
     
     if (!session?.user || !session.accessToken) {
-      console.log('Authentication failed:', {
-        hasSession: !!session,
-        hasUser: !!session?.user,
-        hasAccessToken: !!session?.accessToken
-      })
       return res.status(401).json({ error: 'Authentication required' })
     }
 
-    console.log(`Loading inventory for user: ${session.user.displayName}`)
+    console.log(`📦 Loading inventory for user: ${session.user.displayName}`)
 
-    // Initialize services
-    const bungieAPI = new BungieAPIService()
+    // FIXED: Make direct calls to Bungie API without loading large manifest
+    // This bypasses the 4MB Vercel limit by not proxying large data through API routes
     
-    // Load manifest for item definitions
-    let manifest = null
-    try {
-      // Load from local API endpoint - use absolute URL in production
-      const manifestUrl = process.env.NODE_ENV === 'production' 
-        ? `${process.env.NEXTAUTH_URL}/api/manifest`
-        : 'http://localhost:3000/api/manifest'
-        
-      const manifestResponse = await fetch(manifestUrl)
-      if (manifestResponse.ok) {
-        manifest = await manifestResponse.json()
+    const membershipType = session.user.membershipType
+    const membershipId = session.user.membershipId
+    const accessToken = session.accessToken
+
+    // Get character list (small data)
+    const characterResponse = await fetch(`https://www.bungie.net/Platform/Destiny2/${membershipType}/Profile/${membershipId}/?components=100`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'X-API-Key': process.env.BUNGIE_API_KEY
       }
-    } catch (manifestError) {
-      console.warn('Failed to load manifest, proceeding without it:', manifestError.message)
-    }
-    
-    // Get user's Destiny memberships
-    const { destinyMemberships, primaryMembership } = await bungieAPI.getDestinyMemberships(session.accessToken)
-    
-    if (!primaryMembership) {
-      return res.status(404).json({ error: 'No Destiny account found' })
+    })
+
+    if (!characterResponse.ok) {
+      throw new Error(`Bungie API error: ${characterResponse.status}`)
     }
 
-    // Get complete inventory
-    const inventoryData = await bungieAPI.getCompleteInventory(
-      primaryMembership.membershipType,
-      primaryMembership.membershipId,
-      session.accessToken
-    )
-
-    // Process inventory with manifest data if available
-    const processedInventory = manifest ?
-      await processInventoryWithManifest(inventoryData, manifest) :
-      await processInventoryWithoutManifest(inventoryData)
+    const characterData = await characterResponse.json()
     
+    if (characterData.ErrorCode !== 1) {
+      throw new Error(`Bungie API error: ${characterData.ErrorStatus}`)
+    }
+
+    const characters = characterData.Response.profile?.data?.characterIds || []
+    
+    console.log(`✅ Found ${characters.length} characters`)
+
+    // Return minimal response - let frontend handle full inventory loading via bungie-api-service.js
     const response = {
       success: true,
+      message: 'Use BungieApiService for full inventory data',
+      characters: characters.map(id => ({ characterId: id })),
       membership: {
-        membershipType: primaryMembership.membershipType,
-        membershipId: primaryMembership.membershipId,
-        displayName: primaryMembership.displayName,
-        crossSaveOverride: primaryMembership.crossSaveOverride,
-        applicableMembershipTypes: primaryMembership.applicableMembershipTypes
+        membershipType,
+        membershipId,
+        displayName: session.user.displayName
       },
-      characters: processedInventory.characters,
-      vault: processedInventory.vault,
-      currencies: processedInventory.currencies,
-      itemComponents: processedInventory.itemComponents,
-      lastUpdated: new Date().toISOString()
+      note: 'This endpoint only provides character IDs. Use lib/bungie-api-service.js for full inventory data to avoid 4MB limits.',
+      recommendation: 'Frontend should call Bungie APIs directly using BungieApiService class'
     }
 
-    // Set cache headers for 5 minutes
-    res.setHeader('Cache-Control', 'private, max-age=300')
-    
+    // Cache briefly
+    res.setHeader('Cache-Control', 'private, max-age=60')
     res.status(200).json(response)
 
   } catch (error) {
-    console.error('Error loading inventory:', error)
+    console.error('❌ Inventory API error:', error)
     
-    // Check for specific error types
     if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
       return res.status(401).json({ 
         error: 'Authentication expired. Please sign in again.',
@@ -116,286 +75,10 @@ export default async function handler(req, res) {
       })
     }
     
-    if (error.message?.includes('503') || error.message?.includes('Maintenance')) {
-      return res.status(503).json({ 
-        error: 'Bungie.net is currently under maintenance.',
-        code: 'SERVICE_UNAVAILABLE'
-      })
-    }
-    
     res.status(500).json({ 
-      error: 'Failed to load inventory',
+      error: 'Failed to get inventory info',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      code: 'INVENTORY_LOAD_FAILED'
+      code: 'INVENTORY_API_FAILED'
     })
   }
-}
-
-// Process inventory items without manifest (fallback)
-async function processInventoryWithoutManifest(inventoryData) {
-  const processed = {
-    characters: [],
-    vault: {
-      weapons: [],
-      armor: [],
-      consumables: [],
-      mods: [],
-      other: []
-    },
-    currencies: []
-  }
-
-  // Process characters
-  for (const character of inventoryData.characters) {
-    const processedCharacter = {
-      ...character,
-      equipment: character.equipment?.map(item => ({
-        ...item,
-        displayProperties: {
-          name: `Item ${item.itemHash}`,
-          description: 'Manifest not available'
-        },
-        itemType: 'unknown',
-        tierType: 0
-      })) || [],
-      inventory: character.inventory?.map(item => ({
-        ...item,
-        displayProperties: {
-          name: `Item ${item.itemHash}`,
-          description: 'Manifest not available'
-        },
-        itemType: 'unknown',
-        tierType: 0
-      })) || []
-    }
-    
-    processed.characters.push(processedCharacter)
-  }
-
-  // Process vault items (simplified without manifest)
-  const vaultItems = inventoryData.vault.items?.map(item => ({
-    ...item,
-    displayProperties: {
-      name: `Vault Item ${item.itemHash}`,
-      description: 'Manifest not available'
-    },
-    itemType: 'unknown',
-    tierType: 0
-  })) || []
-  
-  // Put all vault items in 'other' category when no manifest
-  processed.vault.other = vaultItems
-
-  // Process currencies (simplified)
-  if (inventoryData.vault.currencies) {
-    processed.currencies = inventoryData.vault.currencies.map(item => ({
-      ...item,
-      displayProperties: {
-        name: `Currency ${item.itemHash}`,
-        description: 'Manifest not available'
-      }
-    }))
-  }
-
-  processed.itemComponents = inventoryData.itemComponents || {}
-
-  return processed
-}
-
-// Process inventory items with manifest definitions
-async function processInventoryWithManifest(inventoryData, manifest) {
-  const processed = {
-    characters: [],
-    vault: {
-      weapons: [],
-      armor: [],
-      consumables: [],
-      mods: [],
-      other: []
-    },
-    currencies: []
-  }
-
-  // Process characters
-  for (const character of inventoryData.characters) {
-    const processedCharacter = {
-      ...character,
-      equipment: await processItems(character.equipment, manifest, inventoryData.itemComponents),
-      inventory: await processItems(character.inventory, manifest, inventoryData.itemComponents)
-    }
-    
-    // Calculate character stats
-    processedCharacter.stats = calculateCharacterStats(processedCharacter.equipment)
-    
-    processed.characters.push(processedCharacter)
-  }
-
-  // Process vault items
-  const vaultItems = await processItems(
-    inventoryData.vault.items,
-    manifest,
-    inventoryData.itemComponents
-  )
-  
-  // Categorize vault items
-  vaultItems.forEach(item => {
-    if (!item) return
-    
-    switch (item.itemType) {
-      case 2: // Armor
-        processed.vault.armor.push(item)
-        break
-      case 3: // Weapon
-        processed.vault.weapons.push(item)
-        break
-      case 9: // Consumables
-        processed.vault.consumables.push(item)
-        break
-      case 19: // Mods
-      case 20: // Armor Mods
-        processed.vault.mods.push(item)
-        break
-      default:
-        processed.vault.other.push(item)
-    }
-  })
-
-  // Process currencies
-  if (inventoryData.vault.currencies) {
-    processed.currencies = await processItems(
-      inventoryData.vault.currencies,
-      manifest,
-      inventoryData.itemComponents
-    )
-  }
-
-  // Include raw item components for advanced features
-  processed.itemComponents = inventoryData.itemComponents
-
-  return processed
-}
-
-// Process items with manifest data
-async function processItems(items, manifest, itemComponents) {
-  if (!items || !Array.isArray(items)) return []
-  
-  const processed = []
-  
-  for (const item of items) {
-    if (!item) continue
-    
-    const itemDef = manifest?.data?.DestinyInventoryItemDefinition?.[item.itemHash]
-    
-    if (!itemDef) {
-      // Include raw item if no definition found
-      processed.push({
-        ...item,
-        displayProperties: {
-          name: `Unknown Item (${item.itemHash})`,
-          description: 'Item definition not found'
-        }
-      })
-      continue
-    }
-    
-    // Build comprehensive item object
-    const processedItem = {
-      // Basic info
-      itemHash: item.itemHash,
-      itemInstanceId: item.itemInstanceId,
-      quantity: item.quantity || 1,
-      bindStatus: item.bindStatus,
-      location: item.location,
-      bucketHash: item.bucketHash,
-      transferStatus: item.transferStatus,
-      lockable: item.lockable,
-      state: item.state,
-      
-      // From manifest
-      displayProperties: itemDef.displayProperties,
-      itemType: itemDef.itemType,
-      itemSubType: itemDef.itemSubType,
-      classType: itemDef.classType,
-      tierType: itemDef.inventory?.tierType,
-      tierTypeName: itemDef.inventory?.tierTypeName,
-      isExotic: itemDef.inventory?.tierType === 6,
-      isLegendary: itemDef.inventory?.tierType === 5,
-      
-      // Item categories
-      itemCategoryHashes: itemDef.itemCategoryHashes,
-      
-      // Damage type for weapons
-      damageType: itemDef.defaultDamageType,
-      damageTypeHashes: itemDef.damageTypeHashes,
-      
-      // Stats from instance
-      stats: {},
-      sockets: [],
-      perks: [],
-      mods: []
-    }
-    
-    // Add instance-specific data if available
-    if (item.itemInstanceId && itemComponents) {
-      // Stats
-      if (itemComponents.stats?.[item.itemInstanceId]) {
-        const statData = itemComponents.stats[item.itemInstanceId]
-        processedItem.primaryStat = statData.primaryStat
-        
-        if (statData.stats) {
-          Object.entries(statData.stats).forEach(([statHash, statInfo]) => {
-            const statDef = manifest?.data?.DestinyStatDefinition?.[statHash]
-            
-            processedItem.stats[statHash] = {
-              value: statInfo.value,
-              name: statDef?.displayProperties?.name || 'Unknown Stat',
-              description: statDef?.displayProperties?.description
-            }
-          })
-        }
-      }
-      
-      // Sockets (mods and perks)
-      if (itemComponents.sockets?.[item.itemInstanceId]) {
-        const socketData = itemComponents.sockets[item.itemInstanceId]
-        
-        socketData.sockets?.forEach((socket, index) => {
-          if (socket.plugHash) {
-            const plugDef = manifest?.data?.DestinyInventoryItemDefinition?.[socket.plugHash]
-            
-            if (plugDef) {
-              processedItem.sockets.push({
-                socketIndex: index,
-                plugHash: socket.plugHash,
-                isEnabled: socket.isEnabled,
-                isVisible: socket.isVisible,
-                displayProperties: plugDef.displayProperties,
-                plugCategoryHash: plugDef.plugCategoryHash
-              })
-            }
-          }
-        })
-      }
-    }
-    
-    processed.push(processedItem)
-  }
-  
-  return processed
-}
-
-// Calculate character stats from equipment
-function calculateCharacterStats(equipment) {
-  const stats = {
-    mobility: 0,
-    resilience: 0,
-    recovery: 0,
-    discipline: 0,
-    intellect: 0,
-    strength: 0
-  }
-  
-  // This would need manifest data to properly calculate
-  // For now, return empty stats
-  return stats
 }

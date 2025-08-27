@@ -1,5 +1,5 @@
-// pages/api/manifest.js
-// Get Destiny 2 manifest from Bungie API only - no local data fallbacks
+// pages/api/manifest.js  
+// Fixed to eliminate 4MB downloads that cause Vercel errors
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -7,178 +7,51 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('Loading manifest from Bungie API only...')
+    console.log('📋 Manifest API called - redirecting to proper loading strategy')
+
+    // FIXED: Don't download large manifest through Vercel API routes!
+    // Instead, provide instructions for proper data loading
     
-    // Check if we have Bungie API key
-    if (!process.env.BUNGIE_API_KEY) {
-      throw new Error('BUNGIE_API_KEY environment variable is not set')
-    }
-
-    // Get manifest metadata from Bungie first
-    const manifestResponse = await fetch(
-      'https://www.bungie.net/Platform/Destiny2/Manifest/',
-      {
-        headers: {
-          'X-API-Key': process.env.BUNGIE_API_KEY
-        }
-      }
-    )
-
-    if (!manifestResponse.ok) {
-      throw new Error(`Bungie API error: ${manifestResponse.status} ${manifestResponse.statusText}`)
-    }
-
-    const manifestData = await manifestResponse.json()
-    
-    if (manifestData.ErrorCode !== 1) {
-      throw new Error(manifestData.Message || 'Failed to get manifest from Bungie')
-    }
-
-    console.log('Manifest metadata retrieved from Bungie:', {
-      version: manifestData.Response.version,
-      hasJsonPaths: !!manifestData.Response.jsonWorldComponentContentPaths?.en
-    })
-
-    // Get the JSON world content paths for easier processing
-    const jsonPaths = manifestData.Response.jsonWorldComponentContentPaths?.en
-    
-    if (!jsonPaths) {
-      // Return basic structure if no JSON paths available
-      return res.status(200).json({
-        version: manifestData.Response.version,
-        data: {
-          DestinyInventoryItemDefinition: {},
-          DestinyStatDefinition: {},
-          DestinyClassDefinition: {},
-          DestinyDamageTypeDefinition: {},
-          DestinySocketTypeDefinition: {},
-          DestinyPlugSetDefinition: {},
-          DestinySocketCategoryDefinition: {},
-          DestinyInventoryBucketDefinition: {}
+    const response = {
+      error: 'Manifest too large for API routes',
+      message: 'Use client-side loading instead',
+      instructions: {
+        primary: 'Try /api/github/get-manifest for cached data',
+        fallback: 'Use ClientManifestLoader for direct browser-to-Bungie loading',
+        reason: 'Full manifest exceeds Vercel 4MB API route limit'
+      },
+      alternatives: [
+        {
+          method: 'GitHub Cache',
+          endpoint: '/api/github/get-manifest',
+          description: 'Pre-processed, smaller manifest files'
         },
-        metadata: {
-          source: 'bungie',
-          timestamp: new Date().toISOString(),
-          note: 'No JSON paths available - using empty structure'
+        {
+          method: 'Direct Browser Loading', 
+          library: 'lib/client-manifest-loader.js',
+          description: 'Load manifest directly from Bungie in browser (bypasses Vercel)'
+        },
+        {
+          method: 'BungieApiService',
+          library: 'lib/bungie-api-service.js', 
+          description: 'Use existing direct API service for all data'
         }
-      })
+      ],
+      limits: {
+        vercelApiRoute: '4MB maximum',
+        manifestSize: '10MB+ typical',
+        solution: 'Browser-to-Bungie direct calls have no size limit'
+      },
+      note: 'This endpoint will not download large data to prevent Vercel errors'
     }
 
-    // Load key definition tables we need for builds (limit to essential ones for performance)
-    const definitionTypes = [
-      'DestinyInventoryItemDefinition', // Items (weapons, armor, etc.)
-      'DestinyStatDefinition',          // Stats
-      'DestinyClassDefinition',         // Classes
-      'DestinyDamageTypeDefinition',    // Damage types
-      'DestinySocketCategoryDefinition' // Socket categories
-    ]
-
-    const definitions = {}
-
-    // Load each definition table from Bungie's CDN
-    for (const defType of definitionTypes) {
-      if (jsonPaths[defType]) {
-        const defUrl = `https://www.bungie.net${jsonPaths[defType]}`
-        console.log(`Loading ${defType} from Bungie CDN...`)
-        
-        try {
-          const defResponse = await fetch(defUrl, {
-            headers: {
-              'X-API-Key': process.env.BUNGIE_API_KEY
-            },
-            timeout: 30000 // 30 second timeout
-          })
-          
-          if (defResponse.ok) {
-            const defData = await defResponse.json()
-            definitions[defType] = defData
-            console.log(`✅ Loaded ${Object.keys(defData).length} ${defType} entries`)
-          } else {
-            console.warn(`❌ Failed to load ${defType}: ${defResponse.status} ${defResponse.statusText}`)
-            definitions[defType] = {}
-          }
-        } catch (error) {
-          console.error(`❌ Error loading ${defType}:`, error.message)
-          definitions[defType] = {}
-        }
-      } else {
-        console.warn(`No path found for ${defType}`)
-        definitions[defType] = {}
-      }
-    }
-
-    // Add empty structures for any missing definition types
-    const allDefinitionTypes = [
-      'DestinyInventoryItemDefinition',
-      'DestinyStatDefinition', 
-      'DestinyClassDefinition',
-      'DestinyDamageTypeDefinition',
-      'DestinySocketTypeDefinition',
-      'DestinyPlugSetDefinition',
-      'DestinySocketCategoryDefinition',
-      'DestinyInventoryBucketDefinition'
-    ]
-
-    allDefinitionTypes.forEach(type => {
-      if (!definitions[type]) {
-        definitions[type] = {}
-      }
-    })
-
-    const manifest = {
-      version: manifestData.Response.version,
-      mobileWorldContentPaths: manifestData.Response.mobileWorldContentPaths,
-      jsonWorldContentPaths: manifestData.Response.jsonWorldContentPaths,
-      jsonWorldComponentContentPaths: manifestData.Response.jsonWorldComponentContentPaths,
-      
-      // Definition data loaded from Bungie's JSON endpoints
-      data: definitions,
-      
-      metadata: {
-        source: 'bungie-api-only',
-        timestamp: new Date().toISOString(),
-        loadedDefinitions: definitionTypes,
-        definitionCounts: Object.entries(definitions).reduce((acc, [key, value]) => {
-          acc[key] = Object.keys(value).length
-          return acc
-        }, {}),
-        totalItems: Object.keys(definitions.DestinyInventoryItemDefinition || {}).length,
-        note: 'All data loaded from Bungie API - no local fallbacks'
-      }
-    }
-
-    console.log('✅ Manifest loaded successfully from Bungie:', {
-      version: manifest.version,
-      totalDefinitions: Object.values(manifest.metadata.definitionCounts).reduce((a, b) => a + b, 0),
-      totalItems: manifest.metadata.totalItems
-    })
-
-    // Cache for 2 hours (manifest doesn't change often)
-    res.setHeader('Cache-Control', 'public, max-age=7200')
-    res.status(200).json(manifest)
+    res.status(413).json(response) // 413 = Payload Too Large
 
   } catch (error) {
-    console.error('❌ Error loading manifest from Bungie:', error)
-    
-    // Provide helpful error messages
-    let errorDetails = error.message
-    let suggestion = 'Check that BUNGIE_API_KEY is set correctly'
-    
-    if (error.message.includes('fetch')) {
-      suggestion = 'Bungie API may be temporarily unavailable - try again later'
-    } else if (error.message.includes('timeout')) {
-      suggestion = 'Bungie API response timed out - try again'
-    } else if (error.message.includes('ErrorCode')) {
-      suggestion = 'Bungie API returned an error - check API key validity'
-    }
-
-    res.status(500).json({ 
-      error: 'Failed to load manifest from Bungie API',
-      details: errorDetails,
-      suggestion,
-      source: 'bungie-api-only',
-      timestamp: new Date().toISOString(),
-      note: 'This endpoint only uses Bungie API data - no local fallbacks available'
+    console.error('❌ Manifest API error:', error)
+    res.status(500).json({
+      error: 'Manifest API processing failed',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     })
   }
 }

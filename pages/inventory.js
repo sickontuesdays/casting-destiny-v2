@@ -1,6 +1,10 @@
+// pages/inventory.js
+// Fixed to use direct Bungie API calls instead of Vercel API routes
+
 import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/useAuth'
 import InventoryDisplay from '../components/InventoryDisplay'
+import { BungieApiService } from '../lib/bungie-api-service'
 
 export default function InventoryPage() {
   const { session, isLoading: authLoading } = useAuth()
@@ -8,65 +12,84 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [bungieApi, setBungieApi] = useState(null)
 
+  // Initialize Bungie API service when session is available
   useEffect(() => {
-    if (session?.user) {
-      loadInventory()
+    if (session?.accessToken) {
+      console.log('🔧 Initializing BungieApiService for direct calls...')
+      const api = new BungieApiService(session.accessToken)
+      setBungieApi(api)
     }
   }, [session])
 
-  const loadInventory = async () => {
+  // Load inventory when API service is ready
+  useEffect(() => {
+    if (bungieApi && session?.user) {
+      loadInventoryDirectly()
+    }
+  }, [bungieApi, session])
+
+  // FIXED: Use direct browser-to-Bungie calls instead of /api/bungie/inventory
+  const loadInventoryDirectly = async () => {
     try {
       setLoading(true)
       setError(null)
       
-      console.log('Loading inventory from Bungie API...')
+      console.log('📦 Loading inventory directly from Bungie (Browser → Bungie)...')
       
-      const response = await fetch('/api/bungie/inventory', {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        
-        if (response.status === 401) {
-          throw new Error('Authentication expired. Please sign in again.')
-        } else if (response.status === 503) {
-          throw new Error('Bungie.net is currently under maintenance.')
-        } else if (response.status === 404) {
-          throw new Error('No Destiny account found. Make sure you have Destiny 2 characters.')
-        } else {
-          throw new Error(errorData.error || `Failed to load inventory (${response.status})`)
-        }
+      if (!bungieApi) {
+        throw new Error('Bungie API service not initialized')
       }
+
+      // Get user's destiny memberships directly
+      const { destinyMemberships, primaryMembership } = await bungieApi.getDestinyMemberships()
       
-      const data = await response.json()
-      
-      console.log('Inventory loaded successfully:', {
-        characters: data.characters?.length || 0,
-        vaultItems: Object.values(data.vault || {}).reduce((sum, items) => sum + (items?.length || 0), 0),
-        currencies: data.currencies?.length || 0
+      if (!primaryMembership) {
+        throw new Error('No Destiny account found. Make sure you have Destiny 2 characters.')
+      }
+
+      console.log(`📋 Loading complete inventory for ${primaryMembership.displayName}...`)
+
+      // Get complete inventory directly from Bungie (bypasses Vercel entirely)
+      const inventoryData = await bungieApi.getCompleteInventory(
+        primaryMembership.membershipType,
+        primaryMembership.membershipId
+      )
+
+      console.log('✅ Inventory loaded successfully via direct API calls')
+      console.log(`Characters: ${inventoryData.characters?.length || 0}`)
+      console.log(`Vault items: ${inventoryData.vault?.items?.length || 0}`)
+
+      setInventory({
+        ...inventoryData,
+        membership: primaryMembership
       })
-      
-      setInventory(data)
-      setLastUpdated(new Date().toLocaleString())
+      setLastUpdated(new Date())
       
     } catch (error) {
-      console.error('Error loading inventory:', error)
+      console.error('❌ Direct inventory loading failed:', error)
       setError(error.message)
+      
+      // Don't fallback to API route - that causes 4MB errors
+      console.log('ℹ️ No fallback to API routes to avoid 4MB Vercel limits')
+      
     } finally {
       setLoading(false)
     }
   }
 
+  const refreshInventory = async () => {
+    if (bungieApi) {
+      await loadInventoryDirectly()
+    }
+  }
+
+  // Show loading state during auth
   if (authLoading) {
     return (
       <div className="inventory-page">
-        <div className="loading-screen">
+        <div className="loading-container">
           <div className="loading-spinner"></div>
           <p>Checking authentication...</p>
         </div>
@@ -74,20 +97,16 @@ export default function InventoryPage() {
     )
   }
 
-  if (!session?.user) {
+  // Show login prompt if not authenticated
+  if (!session) {
     return (
       <div className="inventory-page">
         <div className="auth-required">
-          <div className="auth-container">
-            <h1>Authentication Required</h1>
-            <p>Sign in with your Bungie.net account to view your Destiny 2 inventory.</p>
-            <button 
-              className="login-btn primary"
-              onClick={() => window.location.href = '/api/auth/bungie-login'}
-            >
-              Sign in with Bungie.net
-            </button>
-          </div>
+          <h2>Authentication Required</h2>
+          <p>Please sign in with your Bungie account to view your inventory.</p>
+          <a href="/api/auth/signin" className="signin-btn">
+            Sign In with Bungie
+          </a>
         </div>
       </div>
     )
@@ -95,89 +114,74 @@ export default function InventoryPage() {
 
   return (
     <div className="inventory-page">
-      <div className="page-header">
-        <div className="header-content">
-          <div className="header-info">
-            <h1>Destiny 2 Inventory</h1>
-            <p>Your complete Destiny 2 inventory across all characters and vault</p>
-          </div>
-          <div className="header-actions">
-            <button 
-              onClick={loadInventory}
-              className="refresh-btn primary"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <div className="loading-spinner small"></div>
-                  <span>Loading...</span>
-                </>
-              ) : (
-                <>
-                  <span>🔄</span>
-                  <span>Refresh</span>
-                </>
-              )}
-            </button>
-          </div>
+      <div className="inventory-header">
+        <h1>Guardian Inventory</h1>
+        <div className="inventory-controls">
+          <button 
+            onClick={refreshInventory} 
+            disabled={loading}
+            className="refresh-btn"
+          >
+            {loading ? 'Loading...' : '🔄 Refresh'}
+          </button>
+          
+          {lastUpdated && (
+            <span className="last-updated">
+              Last updated: {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
         </div>
-        
-        {lastUpdated && !loading && (
-          <div className="last-updated">
-            Last updated: {lastUpdated}
-          </div>
-        )}
       </div>
 
       {error && (
-        <div className="error-banner">
-          <div className="error-content">
-            <span className="error-icon">⚠️</span>
-            <div className="error-details">
-              <strong>Failed to load inventory</strong>
-              <p>{error}</p>
+        <div className="error-container">
+          <div className="error-message">
+            <strong>Inventory Error:</strong> {error}
+          </div>
+          <button onClick={() => setError(null)} className="dismiss-error">×</button>
+          
+          {error.includes('Authentication') && (
+            <div className="error-actions">
+              <a href="/api/auth/signin" className="signin-btn small">
+                Re-authenticate
+              </a>
             </div>
-            <button 
-              onClick={loadInventory}
-              className="retry-btn"
-              disabled={loading}
-            >
-              Retry
-            </button>
-          </div>
+          )}
         </div>
       )}
 
-      {loading && !inventory && (
-        <div className="loading-state">
-          <div className="loading-content">
-            <div className="loading-spinner large"></div>
-            <h3>Loading your Destiny 2 inventory...</h3>
-            <p>Fetching data from Bungie.net servers</p>
-          </div>
+      {loading && (
+        <div className="loading-container">
+          <div className="loading-spinner large"></div>
+          <p>Loading inventory from Bungie...</p>
+          <small>Using direct API calls (no Vercel limits)</small>
         </div>
       )}
 
-      {inventory && (
-        <InventoryDisplay 
-          inventory={inventory}
-          loading={loading}
-          onRefresh={loadInventory}
-        />
+      {inventory && !loading && (
+        <div className="inventory-content">
+          <div className="inventory-summary">
+            <h3>Guardian: {inventory.membership?.displayName}</h3>
+            <div className="summary-stats">
+              <span>Characters: {inventory.characters?.length || 0}</span>
+              <span>Vault Items: {inventory.vault?.items?.length || 0}</span>
+            </div>
+          </div>
+          
+          <InventoryDisplay 
+            inventory={inventory}
+            onRefresh={refreshInventory}
+          />
+        </div>
       )}
 
-      {!loading && !inventory && !error && (
+      {!inventory && !loading && !error && (
         <div className="empty-state">
-          <div className="empty-content">
-            <h3>No inventory data loaded</h3>
-            <p>Click refresh to load your Destiny 2 inventory</p>
-            <button 
-              onClick={loadInventory}
-              className="load-btn primary"
-            >
-              Load Inventory
-            </button>
-          </div>
+          <h3>Ready to Load Inventory</h3>
+          <p>Click refresh to load your Destiny 2 inventory directly from Bungie.</p>
+          <button onClick={refreshInventory} className="load-btn">
+            Load Inventory
+          </button>
         </div>
       )}
     </div>
